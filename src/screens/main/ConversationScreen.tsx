@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   Image,
   ActivityIndicator,
+  Linking,
   Pressable,
   Platform,
   ScrollViewProps,
@@ -39,6 +40,8 @@ import {
   sendMessage,
   addReaction,
   removeReaction,
+  deleteMessageForEveryone,
+  getChatDeletionAvailable,
   type ChatMessage,
   type SendMessagePayload,
 } from '../../services/messages';
@@ -54,8 +57,18 @@ import {
   markAsRead,
   getOtherMemberReadAt,
   getConversationKind,
+  markConversationDelivered,
+  clearChatForBoth,
+  hideConversation,
   type ConversationKind,
 } from '../../services/conversations';
+import { applyServerDeletes, asDeleted, isChatClearedLine, markDeletedIn, withoutClearedHistory } from '../../utils/chatDelete';
+import MessageMenu, { type MessageMenuAction } from '../../components/MessageMenu';
+import { takeBlurSnapshot } from '../../services/blurSnapshot';
+import ReactionEmojiSheet from '../../components/ReactionEmojiSheet';
+import type { MenuAnchor } from '../../utils/messageMenuLayout';
+import DetailActionSheet, { type DetailAction } from '../../components/DetailActionSheet';
+import { chatReceipts, type ReceiptStatus } from '../../utils/chatReceipts';
 import NowPlayingPill from '../../components/NowPlayingPill';
 import { useListeningNow } from '../../hooks/useListeningNow';
 import {
@@ -112,6 +125,7 @@ import { serverNow } from '../../utils/serverClock';
 import { getMyUserId } from '../../services/session';
 import {
   fetchChatMediaSavers,
+  forgetChatMedia,
   localChatMedia,
   prefetchChatMedia,
   queueChatMediaPrefetch,
@@ -126,6 +140,11 @@ import { ChatMediaBubbleContent, ChatMediaSavedBy, useChatMediaLeft } from '../.
 import ChatMediaSourceSheet, { type ChatMediaSource } from '../../components/ChatMediaSourceSheet';
 import ChatMediaPreview from '../../components/ChatMediaPreview';
 import { useRunAfterDismiss } from '../../hooks/useRunAfterDismiss';
+import { copyText } from '../../services/clipboard';
+import { copyableText } from '../../utils/chatCopy';
+import { splitChatLinks, type CheckedLink } from '../../utils/chatLinks';
+import { openLivilLink } from '../../services/livilLinks';
+import ConfirmActionModal, { ConfirmEmphasis } from '../../components/ConfirmActionModal';
 const db = supabase as any;
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -133,6 +152,9 @@ type Route = RouteProp<RootStackParamList, 'Conversation'>;
 
 const QUICK_REACTIONS = ['❤️', '😂', '🔥', '😮', '😢', '👏'];
 const MAX_CHARS = 250;
+
+/** How long a long-press waits for the blur picture before opening the menu without it. */
+const MENU_SNAPSHOT_WAIT_MS = 120;
 
 /** How many characters from the cap the countdown starts showing. */
 const COUNTER_VISIBLE_FROM = 50;
@@ -155,19 +177,6 @@ function clampComposerInput(raw: string): string {
   const lines = byChars.split('\n');
   return lines.length <= MAX_LINES ? byChars : lines.slice(0, MAX_LINES).join('\n');
 }
-
-const MORE_EMOJIS = [
-  '😀','😃','😄','😁','😆','😅','🤣','😊','😇','🥰',
-  '😍','🤩','😘','😗','😙','😚','🙂','🤗','🤭','🫡',
-  '🤔','🫠','🤐','🤨','😐','😑','😶','😏','😒','🙄',
-  '😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕',
-  '🥳','🤯','😤','😠','😡','🤬','😈','👿','💀','💩',
-  '👋','🤚','🖐','✋','🤙','👍','👎','✊','🤜','👏',
-  '🙌','🤲','🙏','💪','🫶','❤️','🧡','💛','💚','💙',
-  '💜','🖤','🤍','💔','❤️‍🔥','✨','💫','⭐','🌟','🎉',
-  '🎊','🎶','🎵','🔥','💯','✅','❌','⚡','💥','🌈',
-];
-
 
 function JamInviteBubble({
   msg,
@@ -234,6 +243,13 @@ function sameSavers(a: Record<string, ChatMediaSaver[]>, b: Record<string, ChatM
   });
 }
 
+const RECEIPT_LABEL: Record<ReceiptStatus, string> = {
+  seen: 'Seen',
+  delivered: 'Delivered',
+  sent: 'Sent',
+  sending: 'Sending…',
+};
+
 /** A GIF in a chat bubble: a little larger than in a comment. */
 const CHAT_GIF_MAX_W = 220;
 const CHAT_GIF_MAX_H = 260;
@@ -257,6 +273,8 @@ function MessageBubble({
   mediaSavers,
   mediaLoading,
   onOpenChatMedia,
+  onOpenLink,
+  onCopyLink,
   showName,
   showAvatar,
 }: {
@@ -286,6 +304,10 @@ function MessageBubble({
   onOpenSharedRepost: (postId: string) => void;
   /** A friends-only repost the viewer may not see opens its reposter's profile instead. */
   onOpenReposterProfile: (userId: string) => void;
+  /** A link in the text, tapped (already checked: utils/chatLinks.ts). */
+  onOpenLink: (link: CheckedLink) => void;
+  /** A link in the text, long-pressed: its text goes on the clipboard. */
+  onCopyLink: (text: string) => void;
 }) {
   const hasStickerMeta = msg.kind === 'sticker' && !!msg.metadata?.sticker_url;
   // A GIF is a text message carrying the GIF in metadata (src/utils/chatGif.ts); its body is
@@ -334,6 +356,37 @@ function MessageBubble({
     : spotifyLink?.id && msg.body
       ? msg.body.replace(spotifyLink.match, '').trim()
       : msg.body;
+  // Links in the words: underlined, tap to open, long-press to copy. Only http(s) that pass
+  // checkChatLink become links; anything else stays plain text (utils/chatLinks.ts).
+  const textParts = useMemo(() => (visibleText ? splitChatLinks(visibleText) : null), [visibleText]);
+  const hasLinks = !!textParts && textParts.some(p => p.link);
+
+  // Deleted for everyone: a quiet placeholder. No words (the server erased them), no
+  // reactions, no reply, and nothing left for a long-press to offer.
+  if (msg.deletedAt && !isSystem) {
+    return (
+      <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+        {!isMe ? <View style={styles.senderAvatarGap} /> : null}
+        <View style={[styles.bubbleColumn, isMe && styles.bubbleColumnMe]}>
+          {!isMe && showName ? (
+            <Text style={styles.senderName}>{msg.senderDisplayName || msg.senderUsername}</Text>
+          ) : null}
+          <View
+            accessible
+            accessibilityLabel={isMe ? 'You deleted this message' : 'This message was deleted'}
+            style={[styles.bubble, styles.bubbleDeleted]}
+          >
+            <View style={styles.deletedRow}>
+              <Icon name="tombstone" size={14} color={COLORS.textMuted} />
+              <Text style={styles.deletedText}>
+                {isMe ? 'You deleted this message' : 'This message was deleted'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   if (isSystem) {
     return (
@@ -463,7 +516,20 @@ function MessageBubble({
               />
             ) : msg.kind === 'text' && visibleText ? (
               <Text style={[styles.bubbleText, isMe ? styles.bubbleTextMe : null]}>
-                {visibleText}
+                {hasLinks
+                  ? textParts!.map((part, i) => (part.link ? (
+                    <Text
+                      key={i}
+                      style={[styles.linkText, isMe ? styles.linkTextMe : styles.linkTextThem]}
+                      onPress={() => onOpenLink(part.link!)}
+                      onLongPress={() => onCopyLink(part.text)}
+                      accessibilityRole="link"
+                      accessibilityHint={`Opens ${part.link.host}. Long-press to copy.`}
+                    >
+                      {part.text}
+                    </Text>
+                  ) : part.text))
+                  : visibleText}
               </Text>
             ) : null}
 
@@ -566,61 +632,11 @@ function MessageBubble({
   );
 }
 
-function ReactionPicker({
-  visible,
-  onPick,
-  onClose,
-}: {
-  visible: boolean;
-  onPick: (emoji: string) => void;
-  onClose: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (!visible) { return null; }
-
-  return (
-    <Pressable style={styles.reactionPickerOverlay} onPress={onClose}>
-      <View style={styles.reactionPickerCard}>
-        {/* Quick row */}
-        <View style={styles.reactionPickerRow}>
-          {QUICK_REACTIONS.map(emoji => (
-            <TouchableOpacity
-              key={emoji}
-              style={styles.reactionPickerBtn}
-              activeOpacity={0.7}
-              onPress={() => onPick(emoji)}
-            >
-              <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[styles.reactionPickerBtn, styles.reactionPickerMoreBtn, expanded && styles.reactionPickerMoreBtnActive]}
-            activeOpacity={0.7}
-            onPress={() => setExpanded(e => !e)}
-          >
-            <Text style={styles.reactionPickerMoreIcon}>+</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Expanded emoji grid */}
-        {expanded && (
-          <View style={styles.emojiGrid}>
-            {MORE_EMOJIS.map((emoji, i) => (
-              <TouchableOpacity
-                key={`${emoji}-${i}`}
-                style={styles.emojiGridBtn}
-                activeOpacity={0.7}
-                onPress={() => onPick(emoji)}
-              >
-                <Text style={styles.emojiGridEmoji}>{emoji}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </View>
-    </Pressable>
-  );
+/** Deletes the downloaded copies of these messages' disappearing photos and videos. */
+function forgetChatMediaOf(messages: ChatMessage[]): void {
+  for (const m of messages) {
+    if (m.kind === 'text' && chatMediaFrom(m.metadata)) { forgetChatMedia(m.id); }
+  }
 }
 
 /**
@@ -663,7 +679,8 @@ async function markReadAndRefreshBadge(conversationId: string): Promise<void> {
 type RowActions = {
   onReply: (msg: ChatMessage) => void;
   onReplyQuotePress: (originalId: string) => void;
-  onLongPress: (msg: ChatMessage) => void;
+  /** `anchor`: where the bubble is on screen, for the menu to lift it from there. */
+  onLongPress: (msg: ChatMessage, anchor: MenuAnchor | null) => void;
   onReactionToggle: (msg: ChatMessage, emoji: string) => void;
   onPlaySharedPost: (postId: string) => void;
   onRepostSharedPost: (postId: string) => void;
@@ -671,6 +688,8 @@ type RowActions = {
   onOpenSharedRepost: (postId: string) => void;
   onOpenReposterProfile: (userId: string) => void;
   onOpenChatMedia: (msg: ChatMessage, origin: { x: number; y: number }) => void;
+  onOpenLink: (link: CheckedLink) => void;
+  onCopyLink: (text: string) => void;
 };
 
 type MessageRowProps = {
@@ -683,8 +702,8 @@ type MessageRowProps = {
   conversationTitle: string;
   repliedTo: ChatMessage | null;
   isHighlighted: boolean;
-  /** Only on my latest outgoing message (a DM's Sending / Delivered / Seen). */
-  readStatus: 'sending' | 'delivered' | 'seen' | null;
+  /** A DM's Sending / Sent / Delivered / Seen, on the one message each applies to (utils/chatReceipts.ts). */
+  readStatus: ReceiptStatus | null;
   mediaSavers: ChatMediaSaver[] | undefined;
   mediaLoading: boolean;
   actions: RowActions;
@@ -712,36 +731,49 @@ const MessageRow = React.memo(function ChatRow({
   mediaLoading,
   actions,
 }: MessageRowProps) {
+  const bubbleRef = useRef<View>(null);
+  const openMenu = (msg: ChatMessage) => {
+    const bubble = bubbleRef.current;
+    if (!bubble) {
+      actions.onLongPress(msg, null);
+      return;
+    }
+    bubble.measureInWindow((_x, y, _width, height) => actions.onLongPress(msg, { y, height }));
+  };
   return (
     <>
       {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
       <SwipeRevealRow timestamp={formatChatTimeOnly(item.createdAt)}>
-        <MessageBubble
-          msg={item}
-          isMe={isMe}
-          // A run of one person's bubbles: name on the first, photo beside the last.
-          showName={showName}
-          showAvatar={showAvatar}
-          conversationId={conversationId}
-          conversationTitle={conversationTitle}
-          repliedTo={repliedTo}
-          isHighlighted={isHighlighted}
-          onReply={() => actions.onReply(item)}
-          onReplyQuotePress={actions.onReplyQuotePress}
-          onLongPress={actions.onLongPress}
-          onReactionToggle={actions.onReactionToggle}
-          onPlaySharedPost={actions.onPlaySharedPost}
-          onRepostSharedPost={actions.onRepostSharedPost}
-          onOpenSharedProfile={actions.onOpenSharedProfile}
-          onOpenSharedRepost={actions.onOpenSharedRepost}
-          onOpenReposterProfile={actions.onOpenReposterProfile}
-          mediaSavers={mediaSavers}
-          mediaLoading={mediaLoading}
-          onOpenChatMedia={actions.onOpenChatMedia}
-        />
+        <View ref={bubbleRef} collapsable={false}>
+          <MessageBubble
+            msg={item}
+            isMe={isMe}
+            // A run of one person's bubbles: name on the first, photo beside the last.
+            showName={showName}
+            showAvatar={showAvatar}
+            conversationId={conversationId}
+            conversationTitle={conversationTitle}
+            repliedTo={repliedTo}
+            isHighlighted={isHighlighted}
+            onReply={() => actions.onReply(item)}
+            onReplyQuotePress={actions.onReplyQuotePress}
+            onLongPress={openMenu}
+            onReactionToggle={actions.onReactionToggle}
+            onPlaySharedPost={actions.onPlaySharedPost}
+            onRepostSharedPost={actions.onRepostSharedPost}
+            onOpenSharedProfile={actions.onOpenSharedProfile}
+            onOpenSharedRepost={actions.onOpenSharedRepost}
+            onOpenReposterProfile={actions.onOpenReposterProfile}
+            mediaSavers={mediaSavers}
+            mediaLoading={mediaLoading}
+            onOpenChatMedia={actions.onOpenChatMedia}
+            onOpenLink={actions.onOpenLink}
+            onCopyLink={actions.onCopyLink}
+          />
+        </View>
         {readStatus ? (
           <Text style={styles.readStatus}>
-            {readStatus === 'seen' ? 'Seen' : readStatus === 'delivered' ? 'Delivered' : 'Sending…'}
+            {RECEIPT_LABEL[readStatus]}
           </Text>
         ) : null}
       </SwipeRevealRow>
@@ -953,16 +985,35 @@ export default function ConversationScreen() {
     return 'not-friends';
   }, [kind, otherUserId, rel]);
   const [reactionTarget, setReactionTarget] = useState<ChatMessage | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  // The chat, blurred behind the menu. Taken before the menu is drawn, so it is not in the picture.
+  const screenRef = useRef<View>(null);
+  const [menuBackdrop, setMenuBackdrop] = useState<string | null>(null);
+  const menuOpeningRef = useRef(0);
+  const closeMessageMenu = useCallback(() => setReactionTarget(null), []);
+  // The message the emoji sheet is open for.
+  const [emojiFor, setEmojiFor] = useState<ChatMessage | null>(null);
+  // My message waiting on "Delete this message?".
+  const [deleteAsk, setDeleteAsk] = useState<ChatMessage | null>(null);
+  // Deleting (20261119010000): offered only once the backend answers that it has it.
+  const [deletionOn, setDeletionOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void getChatDeletionAvailable().then(on => { if (alive) { setDeletionOn(on); } });
+    return () => { alive = false; };
+  }, []);
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   // When the user taps a reply quote we scroll to the original and pulse it
   // for ~1.5s. Cleared by the timer or by a fresh tap.
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Other DM participant's last_read_at — drives the Instagram-style
-  // "Seen / Delivered" indicator under the most recent outgoing message.
-  // Null until the first fetch resolves (we render nothing until then).
+  // The other DM participant's last_read_at and last_delivered_at — how far they have read,
+  // and how far their app has received (utils/chatReceipts.ts). Null until fetched; the
+  // delivered stamp stays null when their app never writes it (an old build) or the
+  // migration is not applied, and the receipts then fall back to today's "Delivered".
   const [otherReadAt, setOtherReadAt] = useState<string | null>(null);
+  const [otherDeliveredAt, setOtherDeliveredAt] = useState<string | null>(null);
 
   // Memoised lookup so MessageBubble can render the quoted-context strip for
   // any message whose `replyToId` resolves into the loaded list. Falls back
@@ -974,28 +1025,13 @@ export default function ConversationScreen() {
     return map;
   }, [messages]);
 
-  // The most recent OUTGOING message — the only one that gets a
-  // Sending/Delivered/Seen footer (Instagram convention). messages is
-  // ordered newest→oldest, so this is the first match.
-  const latestOutgoing = useMemo<ChatMessage | null>(() => {
-    for (const m of messages) {
-      if (m.senderId === myId && m.kind !== 'system' && !m.deletedAt) { return m; }
-    }
-    return null;
-  }, [messages, myId]);
-
-  // Status string for the footer. Optimistic (id starts with `opt-`) means
-  // the server hasn't confirmed yet — show "Sending…". Once confirmed and
-  // the other party's last_read_at meets/exceeds the message createdAt, it
-  // upgrades to "Seen". In between: "Delivered".
-  const latestOutgoingStatus = useMemo<'sending' | 'delivered' | 'seen' | null>(() => {
-    if (kind !== 'dm' || !latestOutgoing) { return null; }
-    if (latestOutgoing.id.startsWith('opt-')) { return 'sending'; }
-    if (otherReadAt && new Date(otherReadAt).getTime() >= new Date(latestOutgoing.createdAt).getTime()) {
-      return 'seen';
-    }
-    return 'delivered';
-  }, [kind, latestOutgoing, otherReadAt]);
+  // Seen under my last message they have read, Delivered under my last one that reached
+  // their phone, Sent / Sending… under my newest when it is neither — DMs only (a group has
+  // no single reader). Message id → label.
+  const receipts = useMemo<Map<string, ReceiptStatus>>(
+    () => (kind === 'dm' ? chatReceipts(messages, myId, otherReadAt, otherDeliveredAt) : new Map()),
+    [kind, messages, myId, otherReadAt, otherDeliveredAt],
+  );
 
   const handleReplyQuotePress = useCallback((originalId: string) => {
     const idx = messages.findIndex(m => m.id === originalId);
@@ -1074,6 +1110,8 @@ export default function ConversationScreen() {
           setNextCursor(cursor);
           setLoading(false);
           setFirstPageIn(true);
+          // This phone now holds the chat up to its newest message: "Delivered" for the sender.
+          void markConversationDelivered(conversationId, msgs[0]?.createdAt ?? null);
           // Write-through: persist first page so next open is instant
           void messageCache.setMessages(conversationId, msgs);
         }
@@ -1123,13 +1161,20 @@ export default function ConversationScreen() {
   useEffect(() => () => { aliveRef.current = false; }, []);
   const refreshLatest = useCallback(async (reason: string) => {
     try {
-      const { messages: latest } = await fetchFirstPageWithRetry(conversationId);
+      const { messages: latest, nextCursor: latestCursor } = await fetchFirstPageWithRetry(conversationId);
       if (!aliveRef.current) { return; }
       const onScreen = new Set(messagesRef.current.map(m => m.id));
       const added = latest.filter(m => !onScreen.has(m.id)).length;
       // In server order, not on top: a catch-up can bring an older message in after newer
       // ones (utils/chatOrder.ts).
-      setMessages(prev => mergeNewestFirst(prev, latest));
+      // …and a message deleted meanwhile becomes its placeholder (merging only adds), and a chat
+      // cleared meanwhile loses everything older than its line.
+      setMessages(prev => withoutClearedHistory(applyServerDeletes(mergeNewestFirst(prev, latest), latest)));
+      if (latest.some(isChatClearedLine)) {
+        setNextCursor(latestCursor);
+        void messageCache.setMessages(conversationId, latest);
+      }
+      void markConversationDelivered(conversationId, latest[0]?.createdAt ?? null);
       if (added > 0) {
         console.log(`[chat] catch-up (${reason}) added ${added} message(s)`);
         setTimeout(scrollToLatest, 50);
@@ -1182,7 +1227,10 @@ export default function ConversationScreen() {
     let cancelled = false;
     void (async () => {
       const row = await getOtherMemberReadAt(conversationId);
-      if (!cancelled && row) { setOtherReadAt(row.lastReadAt); }
+      if (!cancelled && row) {
+        setOtherReadAt(row.lastReadAt);
+        setOtherDeliveredAt(row.lastDeliveredAt);
+      }
     })();
     console.log('[realtime] conv-read subscribing', { conversationId });
     const channel = supabase
@@ -1195,13 +1243,14 @@ export default function ConversationScreen() {
           table: 'conversation_members',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: { new: { user_id?: string; last_read_at?: string | null } }) => {
+        (payload: { new: { user_id?: string; last_read_at?: string | null; last_delivered_at?: string | null } }) => {
           const row = payload.new;
           if (!row || !row.user_id || row.user_id === myId) { return; }
           if (row.last_read_at) {
             console.log('[realtime] conv-read got other last_read_at', row.last_read_at);
             setOtherReadAt(row.last_read_at);
           }
+          if (row.last_delivered_at) { setOtherDeliveredAt(row.last_delivered_at); }
         },
       )
       .subscribe(status => {
@@ -1229,9 +1278,20 @@ export default function ConversationScreen() {
             return prev;
           }
           console.log(`[realtime] ConversationScreen setMessages adding id=${msg.id} (was ${prev.length} msgs)`);
-          return mergeNewestFirst(prev, [msg]);
+          return withoutClearedHistory(mergeNewestFirst(prev, [msg]));
         });
         setTimeout(scrollToLatest, 50);
+        if (isChatClearedLine(msg)) {
+          // Either of us cleared the chat: nothing older exists any more, here or saved.
+          forgetChatMediaOf(messagesRef.current);
+          setNextCursor(null);
+          setReplyingTo(null);
+          setReactionTarget(null);
+          setEmojiFor(null);
+          setDeleteAsk(null);
+          void messageCache.setMessages(conversationId, [msg]);
+          return;
+        }
         // Keep cache warm so the next open of this conversation shows the new msg
         void messageCache.prependMessages(conversationId, [msg]);
         // Re-mark read whenever an incoming message lands while the chat is
@@ -1242,6 +1302,9 @@ export default function ConversationScreen() {
         // wastes a round trip. The push for this message may already be on
         // screen while the user is reading it here, hence the clear.
         if (msg.senderId && msg.senderId !== myId) {
+          // Received, whether or not anyone is looking (Android keeps the socket open in
+          // the background): "Delivered" now; "Seen" may have to wait.
+          void markConversationDelivered(conversationId, msg.createdAt);
           markSeenOrWait();
         }
       },
@@ -1277,6 +1340,17 @@ export default function ConversationScreen() {
         );
       },
       () => { void refreshLatest('realtime'); },
+      (messageId, deletedAt) => {
+        // Deleted for everyone by its sender: the placeholder, here and in the saved copy,
+        // and its downloaded photo/video (if any) is deleted from this phone.
+        setMessages(prev => markDeletedIn(prev, messageId, deletedAt));
+        const shown = messagesRef.current.find(m => m.id === messageId);
+        if (shown) { void messageCache.patchMessage(conversationId, asDeleted(shown, deletedAt)); }
+        forgetChatMedia(messageId);
+        setReplyingTo(r => (r?.id === messageId ? null : r));
+        setReactionTarget(t => (t?.id === messageId ? null : t));
+        setEmojiFor(t => (t?.id === messageId ? null : t));
+      },
     );
 
     return () => unsubscribeFromConversation(conversationId);
@@ -1808,12 +1882,150 @@ export default function ConversationScreen() {
     navigation.navigate('UserProfile', { userId: target.userId });
   }, [navigation, showToast]);
 
-  const handleLongPress = useCallback((msg: ChatMessage) => {
+  // ── Links in messages (utils/chatLinks.ts) ───────────────────────────────
+  // Livil and open.spotify.com open at once — a Livil post or profile inside the app, the way
+  // an incoming link does. Any other site asks first, naming its real host.
+  const [pendingLink, setPendingLink] = useState<CheckedLink | null>(null);
+  // The dialog keeps its words while it fades out after a choice.
+  const shownLinkRef = useRef<CheckedLink | null>(null);
+  if (pendingLink) { shownLinkRef.current = pendingLink; }
+  const openOutside = useCallback((href: string) => {
+    Linking.openURL(href).catch(() => {
+      showToast("Couldn't open that link.", { kind: 'error' });
+    });
+  }, [showToast]);
+  const handleOpenLink = useCallback(async (link: CheckedLink) => {
+    if (link.trust === 'livil' && (await openLivilLink(link.href))) { return; }
+    if (link.trust) {
+      openOutside(link.href);
+      return;
+    }
+    if (KeyboardController.isVisible()) {
+      await KeyboardController.dismiss().catch(() => {});
+    }
+    setPendingLink(link);
+  }, [openOutside]);
+  const handleCopyLink = useCallback((linkText: string) => {
+    try {
+      copyText(linkText);
+      haptics.select();
+      showToast('Link copied', { kind: 'success' });
+    } catch (e) {
+      console.warn('[chat] copy link failed', e);
+      showToast("Couldn't copy that link.", { kind: 'error' });
+    }
+  }, [showToast]);
+
+  const handleLongPress = useCallback((msg: ChatMessage, anchor: MenuAnchor | null) => {
+    // Nothing left of a deleted message to react to, copy or delete.
+    if (msg.deletedAt) { return; }
+    if (KeyboardController.isVisible()) {
+      KeyboardController.dismiss().catch(() => {});
+    }
     // Firm tick when the picker opens — the same intent swipe-to-reply uses at
     // its threshold, so activation feels consistent across gestures.
     haptics.impact();
-    setReactionTarget(msg);
+    const opening = ++menuOpeningRef.current;
+    let opened = false;
+    const open = () => {
+      if (opened || opening !== menuOpeningRef.current) { return; }
+      opened = true;
+      setMenuAnchor(anchor);
+      setReactionTarget(msg);
+    };
+    setMenuBackdrop(null);
+    // The menu waits for the picture only this long: a slow phone gets it dimmed, then blurred.
+    const giveUp = setTimeout(open, MENU_SNAPSHOT_WAIT_MS);
+    void takeBlurSnapshot(screenRef).then(picture => {
+      if (opening !== menuOpeningRef.current) { return; }
+      clearTimeout(giveUp);
+      setMenuBackdrop(picture);
+      open();
+    });
   }, []);
+
+  // ── Deleting a message: my own, always for everyone ────────────────────────
+  const [deletingMsg, setDeletingMsg] = useState(false);
+  const askDelete = useCallback((msg: ChatMessage) => {
+    setReactionTarget(null);
+    setDeleteAsk(msg);
+  }, []);
+  /**
+   * Waits for the server (the button shows it is busy) rather than hiding the message first:
+   * a delete that silently failed would put the words back on the next open.
+   */
+  const confirmDelete = useCallback(async () => {
+    const msg = deleteAsk;
+    if (!msg || deletingMsg) { return; }
+    setDeletingMsg(true);
+    try {
+      await deleteMessageForEveryone(msg.id);
+      const at = new Date().toISOString();
+      setMessages(prev => markDeletedIn(prev, msg.id, at));
+      void messageCache.patchMessage(conversationId, asDeleted(msg, at));
+      forgetChatMedia(msg.id);
+      setReplyingTo(r => (r?.id === msg.id ? null : r));
+      setDeleteAsk(null);
+    } catch (e) {
+      console.warn('[chat] delete failed', e);
+      setDeleteAsk(null);
+      showToast("Couldn't delete that message. Please try again.", { kind: 'error' });
+    } finally {
+      setDeletingMsg(false);
+    }
+  }, [deleteAsk, deletingMsg, conversationId, showToast]);
+
+  // ── Clear chat / Delete chat (the header's options) ────────────────────────
+  const [chatMenuOpen, setChatMenuOpen] = useState(false);
+  const [chatAsk, setChatAsk] = useState<'clear' | 'delete' | null>(null);
+  const shownChatAskRef = useRef(chatAsk);
+  if (chatAsk) { shownChatAskRef.current = chatAsk; }
+  const [clearingChat, setClearingChat] = useState(false);
+  const openChatMenu = useCallback(async () => {
+    if (KeyboardController.isVisible()) {
+      await KeyboardController.dismiss().catch(() => {});
+    }
+    setChatMenuOpen(true);
+  }, []);
+  const chatMenuActions = useMemo<DetailAction[]>(() => [
+    // For both people, so only where there are two: never one member wiping a whole group.
+    ...(isGroup ? [] : [
+      { key: 'clear', label: 'Clear chat', icon: 'eraser', destructive: true, onPress: () => setChatAsk('clear') } as DetailAction,
+    ]),
+    { key: 'delete', label: 'Delete chat', icon: 'trash', destructive: true, onPress: () => setChatAsk('delete') },
+  ], [isGroup]);
+  const confirmChatAsk = useCallback(async () => {
+    const ask = chatAsk;
+    if (!ask || clearingChat) { return; }
+    setClearingChat(true);
+    try {
+      if (ask === 'delete') {
+        // Only out of my list, until a new message: every message stays.
+        await hideConversation(conversationId);
+        setChatAsk(null);
+        void messageCache.removeFromInbox(conversationId);
+        showToast('Chat deleted', { kind: 'success' });
+        if (navigation.canGoBack()) { navigation.goBack(); }
+      } else {
+        await clearChatForBoth(conversationId);
+        setChatAsk(null);
+        forgetChatMediaOf(messagesRef.current);
+        setMessages([]);
+        setNextCursor(null);
+        setReplyingTo(null);
+        void messageCache.setMessages(conversationId, []);
+        showToast('Chat cleared', { kind: 'success' });
+        // Brings in the one line the clear left, whichever way the realtime event went.
+        void refreshLatest('cleared');
+      }
+    } catch (e) {
+      console.warn(`[chat] ${ask} chat failed`, e);
+      setChatAsk(null);
+      showToast(ask === 'delete' ? "Couldn't delete this chat. Please try again." : "Couldn't clear this chat. Please try again.", { kind: 'error' });
+    } finally {
+      setClearingChat(false);
+    }
+  }, [chatAsk, clearingChat, conversationId, navigation, showToast, refreshLatest]);
 
   const handleReactionToggle = useCallback(async (msg: ChatMessage, emoji: string) => {
     const myCurrentReaction = msg.reactions.find(r => r.users.includes(myId));
@@ -1854,6 +2066,63 @@ export default function ConversationScreen() {
     }
   }, [myId, conversationId]);
 
+  // The long-press menu's rows for the pressed message.
+  const menuActions = useMemo<MessageMenuAction[]>(() => {
+    const msg = reactionTarget;
+    if (!msg) { return []; }
+    const actions: MessageMenuAction[] = [];
+    if (!msg.id.startsWith('opt-')) {
+      actions.push({
+        key: 'reply',
+        label: 'Reply',
+        icon: 'reply',
+        onPress: () => {
+          setReactionTarget(null);
+          latestRowActions.current?.onReply(msg);
+        },
+      });
+    }
+    const copyable = copyableText(msg);
+    if (copyable) {
+      actions.push({
+        key: 'copy',
+        label: 'Copy',
+        icon: 'copy',
+        onPress: () => {
+          setReactionTarget(null);
+          try {
+            copyText(copyable);
+            haptics.select();
+            showToast('Copied', { kind: 'success' });
+          } catch (e) {
+            console.warn('[chat] copy failed', e);
+            showToast("Couldn't copy that message.", { kind: 'error' });
+          }
+        },
+      });
+    }
+    if (deletionOn && !msg.id.startsWith('opt-') && msg.senderId === myId) {
+      actions.push({
+        key: 'delete',
+        label: 'Delete',
+        icon: 'trash',
+        destructive: true,
+        onPress: () => askDelete(msg),
+      });
+    }
+    return actions;
+  }, [reactionTarget, showToast, deletionOn, myId, askDelete]);
+
+  // The pressed message's place in its run, so the menu draws it exactly as the chat does.
+  const menuRowRun = useMemo(() => {
+    const i = reactionTarget ? messages.findIndex(m => m.id === reactionTarget.id) : -1;
+    if (i < 0) { return { showName: false, showAvatar: true }; }
+    const item = messages[i]!;
+    const prev = messages[i + 1] ?? null;
+    const next = i > 0 ? messages[i - 1]! : null;
+    return { showName: !prev || !sameChatRun(prev, item), showAvatar: !next || !sameChatRun(item, next) };
+  }, [reactionTarget, messages]);
+
   const handlePickReaction = useCallback(async (emoji: string) => {
     if (!reactionTarget) { return; }
     // Lighter tick for the selection itself, so choosing an emoji doesn't feel
@@ -1863,6 +2132,19 @@ export default function ConversationScreen() {
     setReactionTarget(null);
     await handleReactionToggle(msg, emoji);
   }, [reactionTarget, handleReactionToggle]);
+
+  // The "+" in the menu: every emoji, in a sheet over the chat.
+  const openEmojiSheet = useCallback(() => {
+    setEmojiFor(reactionTarget);
+    setReactionTarget(null);
+  }, [reactionTarget]);
+  const handleSheetReaction = useCallback((emoji: string) => {
+    const msg = emojiFor;
+    setEmojiFor(null);
+    if (!msg) { return; }
+    haptics.select();
+    void handleReactionToggle(msg, emoji);
+  }, [emojiFor, handleReactionToggle]);
 
   const handleStartJam = useCallback(async () => {
     if (activeJam) {
@@ -1918,13 +2200,15 @@ export default function ConversationScreen() {
     onOpenSharedRepost: handleOpenSharedRepost,
     onOpenReposterProfile: handleOpenReposterProfile,
     onOpenChatMedia: handleTapChatMedia,
+    onOpenLink: handleOpenLink,
+    onCopyLink: handleCopyLink,
   };
   const rowActions = useMemo<RowActions>(() => {
     const now = () => latestRowActions.current!;
     return {
       onReply: msg => now().onReply(msg),
       onReplyQuotePress: id => now().onReplyQuotePress(id),
-      onLongPress: msg => now().onLongPress(msg),
+      onLongPress: (msg, anchor) => now().onLongPress(msg, anchor),
       onReactionToggle: (msg, emoji) => now().onReactionToggle(msg, emoji),
       onPlaySharedPost: id => now().onPlaySharedPost(id),
       onRepostSharedPost: id => now().onRepostSharedPost(id),
@@ -1932,6 +2216,8 @@ export default function ConversationScreen() {
       onOpenSharedRepost: id => now().onOpenSharedRepost(id),
       onOpenReposterProfile: userId => now().onOpenReposterProfile(userId),
       onOpenChatMedia: (msg, origin) => now().onOpenChatMedia(msg, origin),
+      onOpenLink: link => now().onOpenLink(link),
+      onCopyLink: linkText => now().onCopyLink(linkText),
     };
   }, []);
 
@@ -1955,24 +2241,27 @@ export default function ConversationScreen() {
           conversationTitle={title}
           repliedTo={item.replyToId ? messagesById.get(item.replyToId) ?? null : null}
           isHighlighted={item.id === highlightedMessageId}
-          readStatus={latestOutgoing?.id === item.id ? latestOutgoingStatus : null}
+          readStatus={receipts.get(item.id) ?? null}
           mediaSavers={mediaSavers[item.id]}
           mediaLoading={openingMediaId === item.id}
           actions={rowActions}
         />
       );
     },
-    [myId, conversationId, title, messages, messagesById, highlightedMessageId, latestOutgoing, latestOutgoingStatus, mediaSavers, openingMediaId, rowActions],
+    [myId, conversationId, title, messages, messagesById, highlightedMessageId, receipts, mediaSavers, openingMediaId, rowActions],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
   // whether they have the app open is deliberately not indicated anywhere. Groups
   // are skipped: a group has no single person to show.
   const listeningIds = useMemo(() => (!isGroup && otherUserId ? [otherUserId] : []), [isGroup, otherUserId]);
-  const otherListening = useListeningNow(listeningIds).get(otherUserId ?? '') ?? null;
+  // Re-read on return from a screen opened over the chat (a profile, the player).
+  const [listeningFocus, setListeningFocus] = useState(0);
+  useFocusEffect(useCallback(() => { setListeningFocus(n => n + 1); }, []));
+  const otherListening = useListeningNow(listeningIds, listeningFocus).get(otherUserId ?? '') ?? null;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView ref={screenRef} style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -2062,6 +2351,17 @@ export default function ConversationScreen() {
             <Icon name="info" size={20} color={COLORS.purpleLight} />
           </TouchableOpacity>
         )}
+        {deletionOn ? (
+          <TouchableOpacity
+            style={styles.infoBtn}
+            activeOpacity={0.7}
+            onPress={() => { void openChatMenu(); }}
+            accessibilityRole="button"
+            accessibilityLabel="Chat options"
+          >
+            <Icon name="overflow" size={22} color={COLORS.purpleLight} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {otherListening ? (
@@ -2360,10 +2660,100 @@ export default function ConversationScreen() {
         </KeyboardGestureArea>
       )}
 
-      <ReactionPicker
+      <MessageMenu
         visible={!!reactionTarget}
+        anchor={menuAnchor}
+        backdropUri={menuBackdrop}
+        alignRight={reactionTarget?.senderId === myId}
+        timeLabel={reactionTarget ? formatChatTimestamp(reactionTarget.createdAt).toUpperCase() : ''}
+        reactions={QUICK_REACTIONS}
+        myReaction={reactionTarget?.reactions.find(r => r.users.includes(myId))?.emoji ?? null}
+        actions={menuActions}
         onPick={handlePickReaction}
-        onClose={() => setReactionTarget(null)}
+        onMore={openEmojiSheet}
+        onClose={closeMessageMenu}
+      >
+        {reactionTarget ? (
+          // Its own provider: the list's ends at the list, and a row cannot draw without one.
+          <SwipeRevealProvider>
+            <MessageRow
+              item={reactionTarget}
+              isMe={reactionTarget.senderId === myId}
+              showSep={false}
+              showName={menuRowRun.showName}
+              showAvatar={menuRowRun.showAvatar}
+              conversationId={conversationId}
+              conversationTitle={title}
+              repliedTo={reactionTarget.replyToId ? messagesById.get(reactionTarget.replyToId) ?? null : null}
+              isHighlighted={false}
+              readStatus={null}
+              mediaSavers={mediaSavers[reactionTarget.id]}
+              mediaLoading={false}
+              actions={rowActions}
+            />
+          </SwipeRevealProvider>
+        ) : null}
+      </MessageMenu>
+
+      <ReactionEmojiSheet
+        visible={!!emojiFor}
+        quickReactions={QUICK_REACTIONS}
+        onPick={handleSheetReaction}
+        onClose={() => setEmojiFor(null)}
+      />
+
+      <ConfirmActionModal
+        visible={!!deleteAsk}
+        title="Delete this message?"
+        message={
+          isGroup
+            ? "It's deleted for everyone in this group. This can't be undone."
+            : <>It's deleted for <ConfirmEmphasis>both</ConfirmEmphasis> you and {title || 'them'}. This can't be undone.</>
+        }
+        icon="trash"
+        tone="destructive"
+        confirmLabel="Delete"
+        busy={deletingMsg}
+        onConfirm={() => { void confirmDelete(); }}
+        onCancel={() => setDeleteAsk(null)}
+      />
+
+      <DetailActionSheet
+        visible={chatMenuOpen}
+        onClose={() => setChatMenuOpen(false)}
+        actions={chatMenuActions}
+      />
+      <ConfirmActionModal
+        visible={!!chatAsk}
+        title={shownChatAskRef.current === 'delete' ? 'Delete this chat?' : 'Clear this chat?'}
+        message={
+          shownChatAskRef.current === 'delete'
+            ? (isGroup
+              ? <>It's hidden for <ConfirmEmphasis>only you</ConfirmEmphasis>, until a new message arrives. You stay in the group, and nothing changes for anyone else.</>
+              : <>It's hidden for <ConfirmEmphasis>only you</ConfirmEmphasis>, until a new message arrives. Your messages stay, and nothing changes for {title || 'them'}.</>)
+            : <>All messages are permanently deleted for <ConfirmEmphasis>both</ConfirmEmphasis> you and {title || 'them'}, and they'll see that you cleared the chat. This can't be undone.</>
+        }
+        icon={shownChatAskRef.current === 'delete' ? 'trash' : 'eraser'}
+        tone="destructive"
+        confirmLabel={shownChatAskRef.current === 'delete' ? 'Delete chat' : 'Clear chat'}
+        busy={clearingChat}
+        onConfirm={() => { void confirmChatAsk(); }}
+        onCancel={() => setChatAsk(null)}
+      />
+
+      <ConfirmActionModal
+        visible={!!pendingLink}
+        title="Open this link?"
+        message={shownLinkRef.current ? `It opens ${shownLinkRef.current.host}, outside Livil.` : undefined}
+        icon="externalLink"
+        tone="primary"
+        confirmLabel="Open"
+        onConfirm={() => {
+          const link = pendingLink;
+          setPendingLink(null);
+          if (link) { openOutside(link.href); }
+        }}
+        onCancel={() => setPendingLink(null)}
       />
 
       <ChatMediaSourceSheet
@@ -2557,6 +2947,18 @@ const styles = StyleSheet.create({
   // white sent text.
   bubbleText: { color: COLORS.white, fontSize: 15, lineHeight: 21 },
   bubbleTextMe: { color: COLORS.white },
+  // "This message was deleted": an outline, never a fill — there is nothing in it.
+  bubbleDeleted: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  deletedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  deletedText: { color: COLORS.textMuted, fontSize: 14, fontStyle: 'italic' },
+  // A link in a message: underlined, white on my purple bubble, light purple on theirs.
+  linkText: { textDecorationLine: 'underline' },
+  linkTextMe: { color: COLORS.white },
+  linkTextThem: { color: COLORS.purpleLight },
   // Brief pulse applied when the user taps a reply quote pointing at this
   // bubble — same purple tint as the comment-row highlight in CommentsSheet.
   bubbleHighlighted: {
@@ -2594,8 +2996,8 @@ const styles = StyleSheet.create({
   },
   replyQuoteAuthorThem: { color: COLORS.purpleLight },
   replyQuoteAuthor: { fontSize: 12, fontWeight: '700' },
-  // Read-receipt footer below the latest outgoing DM message — small,
-  // muted, right-aligned to sit under the bubble.
+  // Read-receipt footer (Seen / Delivered / Sent / Sending…) under the outgoing DM message
+  // it applies to — small, muted, right-aligned to sit under the bubble.
   readStatus: {
     alignSelf: 'flex-end',
     color: COLORS.textSecondary,
@@ -2682,66 +3084,6 @@ const styles = StyleSheet.create({
   },
   reactionEmoji: { fontSize: 14, lineHeight: 16 },
   reactionCount: { color: COLORS.white, fontSize: 11, fontWeight: '600' },
-  // Reaction picker overlay
-  reactionPickerOverlay: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  reactionPickerCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: 24,
-    padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    width: '100%',
-  },
-  reactionPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  reactionPickerBtn: { padding: 6 },
-  reactionPickerEmoji: { fontSize: 26 },
-  reactionPickerMoreBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  reactionPickerMoreBtnActive: {
-    backgroundColor: COLORS.purpleDim,
-  },
-  reactionPickerMoreIcon: { color: COLORS.textSecondary, fontSize: 20, fontWeight: '600' },
-  emojiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingTop: 8,
-    paddingHorizontal: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
-    marginTop: 6,
-  },
-  emojiGridBtn: {
-    width: '10%',
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiGridEmoji: { fontSize: 22 },
   // Inline banner that appears between the message list and the input when
   // the user has armed a reply via the swipe gesture. Tap × to cancel and
   // fall back to a normal send.

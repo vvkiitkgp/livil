@@ -16,7 +16,7 @@ jest.mock('../Button', () => {
   };
 });
 
-import ConfirmActionModal from '../ConfirmActionModal';
+import ConfirmActionModal, { ConfirmEmphasis } from '../ConfirmActionModal';
 
 type Props = React.ComponentProps<typeof ConfirmActionModal>;
 
@@ -59,4 +59,24 @@ it('without a Cancel button there is nothing to tap away', () => {
 it('is inert while the action is running', () => {
   const { outside } = render({ busy: true });
   expect(outside[0]!.props.disabled).toBe(true);
+});
+
+it('a message can stress the words that decide what happens', () => {
+  const { Text } = jest.requireActual('react-native');
+  let r!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    r = TestRenderer.create(
+      <ConfirmActionModal
+        visible
+        title="Clear this chat?"
+        message={<>Deleted for <ConfirmEmphasis>both</ConfirmEmphasis> of you.</>}
+        confirmLabel="Clear chat"
+        onConfirm={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+  });
+  const stressed = r.root.findByType(ConfirmEmphasis).findByType(Text);
+  expect(stressed.props.children).toBe('both');
+  expect(stressed.props.style.fontWeight).toBe('700');
 });

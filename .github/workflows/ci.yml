@@ -517,6 +517,26 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/chat-media.test.sql
 
+      # "Delivered" receipts (20261119000000): a member stamps only their own
+      # last_delivered_at, it only moves forward and never past the server's clock, and the
+      # last_read_at update every installed app sends is untouched.
+      - name: Chat delivered receipts tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/chat-delivered-receipts.test.sql
+
+      # Chat delete (20261119010000): delete-for-everyone by the sender only, ERASING the
+      # words; the chat-list line never keeps them (v1 and v2); delete-for-me, clear chat and
+      # delete chat are each person's own and invisible to everyone else.
+      - name: Chat delete tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/chat-delete.test.sql
+
       # Streaming renditions (20261115000000, ADR-0033): only the service role may swap a
       # frozen media URL, only for a rendition in the same bucket folder, only while
       # recording the original; clients stay frozen and cannot write the ledger.

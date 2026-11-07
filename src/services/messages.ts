@@ -171,6 +171,25 @@ type RawMessage = {
 };
 
 function toMessage(raw: RawMessage, myId: string, rawReactions: RawReaction[]): ChatMessage {
+  // Deleted for everyone: a placeholder. The server erases the words (20261119010000), but a
+  // message deleted before that — or by an older path — may still carry them: never shown.
+  if (raw.deleted_at) {
+    return {
+      id: raw.id,
+      conversationId: raw.conversation_id,
+      senderId: raw.sender_id,
+      kind: raw.kind as MessageKind,
+      body: null,
+      metadata: null,
+      replyToId: raw.reply_to_id,
+      createdAt: raw.created_at,
+      deletedAt: raw.deleted_at,
+      senderUsername: raw.profiles?.username ?? null,
+      senderDisplayName: raw.profiles?.display_name ?? null,
+      senderAvatarUrl: raw.profiles?.avatar_url ?? null,
+      reactions: [],
+    };
+  }
   const reactionMap = new Map<string, { count: number; reactedByMe: boolean; users: string[] }>();
   for (const r of rawReactions.filter(rx => rx.message_id === raw.id)) {
     const existing = reactionMap.get(r.emoji) ?? { count: 0, reactedByMe: false, users: [] };
@@ -215,11 +234,12 @@ export async function fetchMessages(
   // it (`getUser()`), which on a slow connection added a second or more to opening a chat.
   const myIdPromise = getMyUserId().catch(() => null);
 
+  // Deleted messages included: this app draws "This message was deleted" in their place
+  // (their words are never shown — toMessage). Installed builds keep `deleted_at is null`.
   let query = db
     .from('messages')
     .select('id, conversation_id, sender_id, kind, body, metadata, reply_to_id, created_at, deleted_at')
     .eq('conversation_id', conversationId)
-    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(limit + 1);
 
@@ -337,11 +357,46 @@ export async function sendMessage(
   return toMessage(raw, myId, []);
 }
 
-export async function deleteMessage(messageId: string): Promise<void> {
-  await db
-    .from('messages')
-    .update({ deleted_at: new Date().toISOString() })
-    .eq('id', messageId);
+// ── Deleting (20261119010000, 20261119020000) ──────────────────────────────────
+
+let deletionAvailable: Promise<boolean> | null = null;
+
+/**
+ * Whether this backend has the delete rules (20261119020000) — asked once per launch (a one-row
+ * read of conversation_hides). Until it answers true, the app offers none of Delete, Clear chat
+ * or Delete chat. A failed read that is not "no such table" (offline) is asked again next time.
+ */
+export function getChatDeletionAvailable(): Promise<boolean> {
+  if (!deletionAvailable) {
+    const asking = (async () => {
+      try {
+        const { error } = await db.from('conversation_hides').select('user_id').limit(1);
+        if (!error) { return true; }
+        if (error.code !== '42P01' && error.code !== 'PGRST205') { deletionAvailable = null; }
+        return false;
+      } catch {
+        deletionAvailable = null;
+        return false;
+      }
+    })();
+    deletionAvailable = asking;
+  }
+  return deletionAvailable;
+}
+
+/** Test-only. */
+export function __resetChatDeletionForTest(): void {
+  deletionAvailable = null;
+}
+
+/**
+ * Delete — my own message, for everyone in the chat. The server marks it deleted AND erases its
+ * words and attachment; every app then shows it as deleted (installed builds simply stop showing
+ * it). Throws on failure, so the caller can put the message back.
+ */
+export async function deleteMessageForEveryone(messageId: string): Promise<void> {
+  const { error } = await db.rpc('delete_message_for_everyone', { p_message_id: messageId });
+  if (error) { throw error; }
 }
 
 export async function addReaction(messageId: string, emoji: string): Promise<void> {

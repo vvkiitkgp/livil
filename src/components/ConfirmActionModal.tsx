@@ -15,8 +15,11 @@ export type ConfirmTone = 'destructive' | 'primary';
 type Props = {
   visible: boolean;
   title: string;
-  /** The one short line under the title. Omit it when the title says it all (text diet, 2026-10-18). */
-  message?: string;
+  /**
+   * The one short line under the title. Omit it when the title says it all (text diet,
+   * 2026-10-18). Text, with ConfirmEmphasis around any word the reader must not miss.
+   */
+  message?: React.ReactNode;
   bullets?: string[];
   glyph?: string;
   /** An app icon in the circle instead of `glyph` — for a dialog that should match the row that opened it. */
@@ -35,6 +38,11 @@ type Props = {
   onConfirm: () => void;
   onCancel: () => void;
 };
+
+/** A word in a dialog's message that decides what the action does, like "both" or "only you". */
+export function ConfirmEmphasis({ children }: { children: React.ReactNode }) {
+  return <Text style={styles.emphasis}>{children}</Text>;
+}
 
 /**
  * The app's standard confirmation modal. Use this for any "Are you sure?"
@@ -207,6 +215,10 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 22,
     paddingHorizontal: 4,
+  },
+  emphasis: {
+    color: COLORS.purpleLight,
+    fontWeight: '700',
   },
   spacer: {
     height: 18,

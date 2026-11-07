@@ -18,6 +18,7 @@ import { COLORS } from '../../theme/colors';
 import { supabase } from '../../../lib/supabase';
 import {
   listConversations,
+  markConversationsDelivered,
   type ConversationSummary,
 } from '../../services/conversations';
 import { messageCache } from '../../services/messageCache';
@@ -191,6 +192,8 @@ export default function InboxScreen() {
       const data = await listConversations();
       setConversations(data);
       void messageCache.setInbox(data);
+      // The list carries every chat's newest message: "Delivered" for whoever sent it.
+      void markConversationsDelivered(data);
     } catch {
       // Network failed — leave whatever is showing. The next event or
       // focus will retry; no value in surfacing transient blips here.
@@ -221,6 +224,7 @@ export default function InboxScreen() {
       const data = await networkPromise;
       setConversations(data);
       void messageCache.setInbox(data); // write-through, fire-and-forget
+      void markConversationsDelivered(data);
     } catch {
       // Network failed — leave whatever is showing (cached or empty)
     } finally {
@@ -265,15 +269,22 @@ export default function InboxScreen() {
     if (!myId) { return; }
     console.log('[realtime] inbox subscribing', { myId });
     let joinedOnce = false;
+    // My own rows also change when this phone stamps "Delivered" (last_delivered_at), which
+    // changes nothing on this list — and the first stamp after an update touches every chat
+    // at once. So an update whose last_read_at is the one already seen is skipped, and the
+    // rest are gathered into one refresh.
+    const readSeen = new Map<string, string | null>();
+    let memberRefresh: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel(`inbox:${myId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null; conversation_id?: string } }) => {
+        (payload: { new: { sender_id?: string | null; kind?: string; deleted_at?: string | null; metadata?: { chat_cleared?: boolean } | null; conversation_id?: string } }) => {
           const row = payload.new;
           if (!row || row.deleted_at) { return; }
-          if (row.kind === 'system') { return; }
+          // System lines never reach the list, except that a cleared chat's line is empty now.
+          if (row.kind === 'system' && !row.metadata?.chat_cleared) { return; }
           if (row.sender_id && row.sender_id === myIdRef.current) { return; }
           console.log('[realtime] inbox got messages INSERT', { conv: row.conversation_id, sender: row.sender_id });
           void refreshFromNetwork();
@@ -281,12 +292,33 @@ export default function InboxScreen() {
       )
       .on(
         'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages' },
+        (payload: { new?: { deleted_at?: string | null } }) => {
+          // A message was deleted for everyone: its chat's line now reads "This message was
+          // deleted" (20261119010000). Messages are never otherwise updated.
+          if (!payload.new?.deleted_at) { return; }
+          void refreshFromNetwork();
+        },
+      )
+      .on(
+        'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'conversation_members', filter: `user_id=eq.${myId}` },
-        () => {
+        (payload: { new?: { conversation_id?: string; last_read_at?: string | null } }) => {
           // My own last_read_at moved → unread badge for that row should
           // drop. Refetch picks up the new server-computed unread count.
+          const row = payload.new;
+          if (row?.conversation_id) {
+            const before = readSeen.get(row.conversation_id);
+            const now = row.last_read_at ?? null;
+            readSeen.set(row.conversation_id, now);
+            if (before !== undefined && before === now) { return; }
+          }
           console.log('[realtime] inbox got own conversation_members UPDATE');
-          void refreshFromNetwork();
+          if (memberRefresh) { clearTimeout(memberRefresh); }
+          memberRefresh = setTimeout(() => {
+            memberRefresh = null;
+            void refreshFromNetwork();
+          }, 300);
         },
       )
       .on(
@@ -311,6 +343,7 @@ export default function InboxScreen() {
       });
     return () => {
       console.log('[realtime] inbox unsubscribing');
+      if (memberRefresh) { clearTimeout(memberRefresh); }
       void supabase.removeChannel(channel);
     };
   }, [myId, refreshFromNetwork]);
@@ -343,7 +376,11 @@ export default function InboxScreen() {
       .map(c => c.otherUserId as string),
     [conversations],
   );
-  const listening = useListeningNow(dmUserIds);
+  // Re-read who is listening on every visit: this screen stays mounted under the chats it
+  // opens, and a listener whose app was swiped away never says "stopped".
+  const [listeningFocus, setListeningFocus] = useState(0);
+  useFocusEffect(useCallback(() => { setListeningFocus(n => n + 1); }, []));
+  const listening = useListeningNow(dmUserIds, listeningFocus);
   const vibes = useChatVibes(conversations);
 
   // The group picture reshuffles once per VISIT (not per render): a new random

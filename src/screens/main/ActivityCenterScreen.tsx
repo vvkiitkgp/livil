@@ -7,8 +7,8 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -31,33 +31,47 @@ import { Icon } from '../../components/Icon';
 import { respondToCredit } from '../../services/tracks';
 import { useToast } from '../../contexts/ToastContext';
 import { seenMustWait } from '../../utils/seenWhileAway';
+import { activityOpenPoint, openOffsetFor, readBoundaryAt } from '../../utils/activitySeen';
 
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+/** The gap under the newest notification when the list rests at its start (offset 0). */
+const REST_PADDING = 200;
+/** Longest the list stays hidden waiting to measure the rows it opens on; then it shows at rest. */
+const POSITION_TIMEOUT_MS = 1000;
 
 // Read-only activity feed rendered exactly like a conversation thread, "from"
 // the Livil bot. There is intentionally NO input/send bar — view only.
 export default function ActivityCenterScreen() {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
 
   const flatListRef = useRef<FlatList<ActivityItem>>(null);
-  // Tracks whether we've performed the initial center-on-latest scroll. Without
-  // this guard, the same effect would re-fire on every realtime arrival (since
-  // it depends on orderedItems.length) and yank the user to the bottom while
-  // they're reading older notifications.
-  const didInitialScrollRef = useRef(false);
+  // Newest first, as listActivity returns them — drawn in an INVERTED list, so the newest is
+  // at the bottom like a chat and "the newest at rest" is offset 0 (ConversationScreen's
+  // pattern). The old list was oldest-first and scrollToIndex'ed the last row 100 ms after
+  // load; without getItemLayout that index's position was an ESTIMATE from average row
+  // heights, so with tall and short cards it opened mid-list (owner, 2026-11-02).
   const [items, setItems] = useState<ActivityItem[]>([]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  // The read state as it was when this visit opened: the updated_at of the newest notification
+  // already read (utils/activitySeen.ts). Captured once, from the first page and BEFORE
+  // markActivityRead; a refresh that returns everything read never moves it. Leaving and
+  // coming back remounts the screen, so next time "Seen" is under the newest.
+  const [readBoundary, setReadBoundary] = useState<string | null>(null);
+  // The row this visit opens on: the oldest new notification, or null (nothing new → rest).
+  const [openTargetId, setOpenTargetId] = useState<string | null>(null);
+  // Rows drawn on the first pass: enough to reach the target, so all of it gets measured.
+  const [initialRows, setInitialRows] = useState(12);
+  // Hidden until the list sits on the target, so it never flashes at the newest first.
+  const [positioned, setPositioned] = useState(false);
   // Credit ids with an answer in flight, so a double tap cannot send two answers.
   const [answering, setAnswering] = useState<Set<string>>(new Set());
   const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [meId, setMeId] = useState<string | null>(null);
-
-  // listActivity returns newest-first; render oldest-first so the thread reads
-  // top→bottom like a conversation (oldest on top, newest at the bottom).
-  const orderedItems = useMemo(() => [...items].reverse(), [items]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,6 +82,14 @@ export default function ActivityCenterScreen() {
           supabase.auth.getUser(),
         ]);
         if (!cancelled) {
+          // The read state as it was when this visit opened — from the first page, BEFORE
+          // markActivityRead below (utils/activitySeen.ts).
+          const boundary = readBoundaryAt(activityRes);
+          const { firstUnseenIndex } = activityOpenPoint(activityRes, boundary);
+          setReadBoundary(boundary);
+          setOpenTargetId(firstUnseenIndex === null ? null : activityRes[firstUnseenIndex]!.id);
+          setInitialRows(Math.max(12, (firstUnseenIndex ?? 0) + 2));
+          setPositioned(firstUnseenIndex === null);
           setItems(activityRes);
           setMeId(userRes.data.user?.id ?? null);
         }
@@ -76,27 +98,65 @@ export default function ActivityCenterScreen() {
       } finally {
         if (!cancelled) { setLoading(false); }
       }
-      // Clear the unread badge once the feed is open.
+      // Clear the unread badge once the feed is open — AFTER the read state was captured.
       void markActivityRead();
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // On initial load, center the latest (last) notification in the viewport.
-  // Guarded so realtime arrivals (which also bump orderedItems.length) don't
-  // re-trigger the scroll and yank the user off whatever they're reading.
+  // "Seen", like a person's chat: under the newest notification you had already read before
+  // this visit — the 4th from the end when 3 are new; under the newest when nothing is.
+  const seenId = useMemo(() => {
+    const { seenIndex } = activityOpenPoint(items, readBoundary);
+    return seenIndex === null ? null : items[seenIndex]!.id;
+  }, [items, readBoundary]);
+
+  // ── Opening on the first new notification ────────────────────────────────
+  // Its offset is computed from the rows' MEASURED heights (onLayout), the newest down to the
+  // target, then applied with scrollToOffset (utils/activitySeen.ts openOffsetFor).
+  const rowHeightsRef = useRef(new Map<string, number>());
+  const viewportRef = useRef(0);
+  const contentHeightRef = useRef<number | undefined>(undefined);
+  const positionedRef = useRef(positioned);
+  positionedRef.current = positioned;
+  const tryPosition = useCallback(() => {
+    if (positionedRef.current || !openTargetId) { return; }
+    const list = itemsRef.current;
+    const target = list.findIndex(it => it.id === openTargetId);
+    if (target < 0) { setPositioned(true); return; }
+    const heights = list.slice(0, target + 1).map(it => rowHeightsRef.current.get(it.id));
+    const offset = openOffsetFor(
+      heights,
+      target,
+      REST_PADDING + insets.bottom,
+      viewportRef.current,
+      undefined,
+      contentHeightRef.current,
+    );
+    if (offset === null) { return; }
+    positionedRef.current = true;
+    flatListRef.current?.scrollToOffset({ offset, animated: false });
+    // Shown on the next frame, once the scroll has been applied.
+    requestAnimationFrame(() => setPositioned(true));
+  }, [openTargetId, insets.bottom]);
+
+  const onRowLayout = useCallback((id: string, e: LayoutChangeEvent) => {
+    rowHeightsRef.current.set(id, e.nativeEvent.layout.height);
+    tryPosition();
+  }, [tryPosition]);
+
+  // Never stay hidden: if the rows cannot be measured in time, show the list at rest.
   useEffect(() => {
-    if (didInitialScrollRef.current) { return; }
-    if (loading || orderedItems.length === 0) { return; }
-    didInitialScrollRef.current = true;
-    setTimeout(() => {
-      flatListRef.current?.scrollToIndex({
-        index: orderedItems.length - 1,
-        animated: false,
-        viewPosition: 0.5,
-      });
-    }, 100);
-  }, [loading, orderedItems.length]);
+    if (positioned || loading) { return; }
+    const t = setTimeout(() => {
+      if (!positionedRef.current) {
+        console.log('[activity] open: rows not measured in time — showing the newest');
+        positionedRef.current = true;
+        setPositioned(true);
+      }
+    }, POSITION_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [positioned, loading]);
 
   // Live updates: any insert/update on activity_notifications for this user
   // triggers a refetch (so we pick up the joined display fields the row alone
@@ -223,13 +283,13 @@ export default function ActivityCenterScreen() {
 
   const renderItem = useCallback(
     ({ item, index }: { item: ActivityItem; index: number }) => {
-      // orderedItems is oldest→newest, so the chronologically earlier
-      // neighbour sits at index - 1. Render a time label above the bubble
-      // when this row starts a new "group" (first item, or >1h gap).
-      const prev = index > 0 ? orderedItems[index - 1] : null;
+      // items is newest→oldest (the list is inverted), so the chronologically earlier
+      // neighbour — the row drawn ABOVE this one — sits at index + 1. Render a time label
+      // above the bubble when this row starts a new "group" (oldest item, or >1h gap).
+      const prev = items[index + 1] ?? null;
       const showSep = shouldShowTimeSeparator(item.createdAt, prev?.createdAt ?? null);
       return (
-        <>
+        <View onLayout={e => onRowLayout(item.id, e)}>
           {showSep ? <ChatTimeSeparator label={formatChatTimestamp(item.createdAt)} /> : null}
           <SwipeRevealRow timestamp={formatChatTimestamp(item.createdAt)}>
             <ActivityBubble
@@ -242,10 +302,11 @@ export default function ActivityCenterScreen() {
                 : false}
             />
           </SwipeRevealRow>
-        </>
+          {item.id === seenId ? <Text style={styles.seenLabel}>Seen</Text> : null}
+        </View>
       );
     },
-    [handleActorPress, handlePostPress, handleRespondToCredit, answering, orderedItems],
+    [handleActorPress, handlePostPress, handleRespondToCredit, answering, items, onRowLayout, seenId],
   );
 
   return (
@@ -282,19 +343,25 @@ export default function ActivityCenterScreen() {
           <SwipeRevealGestureView>
             <FlatList
               ref={flatListRef}
-              style={styles.flex}
-              data={orderedItems}
+              style={[styles.flex, !positioned && styles.hidden]}
+              data={items}
               keyExtractor={item => item.id}
               renderItem={renderItem}
-              // paddingBottom = half the screen so the user can scroll the latest
-              // message all the way to the top. On mount we scrollToIndex with
-              // viewPosition: 0.5 so it lands centered.
+              inverted
+              initialNumToRender={initialRows}
+              // Inverted: paddingTop is the gap UNDER the newest notification (its resting
+              // spot), paddingBottom the space above the oldest.
               contentContainerStyle={[
                 styles.listContent,
-                { paddingBottom: windowHeight * 0.5 + insets.bottom },
+                { paddingTop: REST_PADDING + insets.bottom },
               ]}
-              onScrollToIndexFailed={() => {
-                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+              onLayout={e => {
+                viewportRef.current = e.nativeEvent.layout.height;
+                tryPosition();
+              }}
+              onContentSizeChange={(_w, h) => {
+                contentHeightRef.current = h;
+                tryPosition();
               }}
             />
           </SwipeRevealGestureView>
@@ -326,7 +393,18 @@ const styles = StyleSheet.create({
   },
   headerSpacer: { width: 32 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  listContent: { paddingTop: 8 },
+  listContent: { paddingBottom: 8 },
+  hidden: { opacity: 0 },
+  // The chat's read-receipt footer (ConversationScreen readStatus), set under the bot's
+  // bubble: past the row's 12 padding, the bot's 28 avatar and the 6 gap.
+  seenLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    marginLeft: 12 + 28 + 6 + 4,
+    marginTop: -2,
+    marginBottom: 4,
+  },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 32 },
   emptyLogo: { marginBottom: 4 },
   emptyTitle: { color: COLORS.white, fontSize: 18, fontWeight: '700' },

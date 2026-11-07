@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-data
 consumers: [P-DA, BE, QA, DC]
-last_verified: 2026-11-02
+last_verified: 2026-11-07
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-Reconstructed from 175 migration(s) in `supabase/migrations/`.
+Reconstructed from 179 migration(s) in `supabase/migrations/`.
 
 ## ⚠️ This schema is incomplete
 
@@ -31,7 +31,7 @@ review, or restore. Closing this requires a baseline schema dump.
 
 ## Tables defined in this repository
 
-65 table(s).
+67 table(s).
 
 ### `account_exit_feedback`
 
@@ -234,6 +234,33 @@ RLS enabled · realtime · defined in `20261118000000_chat_media.sql`
 
 - `chat_media_saves_message_idx` `(message_id)`
 
+### `chat_vibe_kept`
+
+RLS enabled · defined in `20261119030000_chat_vibe_keeps_points.sql`
+
+| Column | Definition |
+|---|---|
+| `conversation_id` | `uuid primary key references public.conversations(id) on delete cascade` |
+| `points` | `bigint not null default 0 check (points >= 0)` |
+
+### `conversation_hides`
+
+RLS enabled · defined in `20261119020000_chat_delete_rules.sql`
+
+| Column | Definition |
+|---|---|
+| `user_id` | `uuid not null references public.profiles(id) on delete cascade` |
+| `conversation_id` | `uuid not null references public.conversations(id) on delete cascade` |
+| `hidden_at` | `timestamptz not null default now()` |
+
+**Table constraints**
+
+- `primary key (user_id, conversation_id)`
+
+**Indexes**
+
+- `conversation_hides_conversation_idx` `(conversation_id)`
+
 ### `conversation_members`
 
 RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
@@ -250,6 +277,12 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 
 - `primary key (conversation_id, user_id)`
 
+**Added by later migrations**
+
+| Column | Definition | Migration |
+|---|---|---|
+| `last_delivered_at` | `timestamptz` | `20261119000000_chat_delivered_receipts.sql` |
+
 **Indexes**
 
 - `(unnamed)` `(user_id)`
@@ -257,6 +290,7 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 **Triggers**
 
 - `trg_conversation_members_freeze_identity` — before update (`20260722000000_liv10_authorization_guards.sql`)
+- `trg_conversation_members_delivered_forward` — before insert or update (`20261119000000_chat_delivered_receipts.sql`)
 
 ### `conversations`
 
@@ -556,6 +590,7 @@ RLS enabled · realtime · defined in `20260528000000_chat_jam.sql`
 - `trg_messages_freeze_identity` — before update (`20260729000000_liv78_msg_update_with_check.sql`)
 - `after_message_delete` — after delete (`20260730000000_liv74_delete_messages_and_deletion_ledger.sql`)
 - `trg_messages_stamp_created_at` — before insert (`20261105000000_server_time_on_writes.sql`)
+- `trg_conversation_preview_on_message_delete` — after update of deleted_at (`20261119010000_chat_delete.sql`)
 
 ### `moderation_actions`
 
@@ -1624,6 +1659,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_badge_kinds_guard_reclaim` | `badge_kinds` | before update | `20260919000000_profile_badges_first_100.sql` |
 | `trg_suggestion_dismissals_on_block` | `blocked_users` | after insert | `20261008000000_suggestions_follow_friendship.sql` |
 | `trg_conversation_members_freeze_identity` | `conversation_members` | before update | `20260722000000_liv10_authorization_guards.sql` |
+| `trg_conversation_members_delivered_forward` | `conversation_members` | before insert or update | `20261119000000_chat_delivered_receipts.sql` |
 | `trg_conversations_freeze_derived` | `conversations` | before update | `20260722180000_fix_comment_like_counts_and_conversation_drift.sql` |
 | `trg_follows_profile_counts` | `follows` | after insert or delete | `20260722120000_capture_counter_triggers.sql` |
 | `trg_friendships_create_dm_on_accept` | `friendships` | after update | `20260812000000_liv25_dm_on_friend_accept.sql` |
@@ -1639,6 +1675,7 @@ same row-level security policies that gate ordinary reads.
 | `trg_messages_freeze_identity` | `messages` | before update | `20260729000000_liv78_msg_update_with_check.sql` |
 | `after_message_delete` | `messages` | after delete | `20260730000000_liv74_delete_messages_and_deletion_ledger.sql` |
 | `trg_messages_stamp_created_at` | `messages` | before insert | `20261105000000_server_time_on_writes.sql` |
+| `trg_conversation_preview_on_message_delete` | `messages` | after update of deleted_at | `20261119010000_chat_delete.sql` |
 | `trg_moderation_actions_append_only` | `moderation_actions` | BEFORE UPDATE OR DELETE | `20260923010000_track_takedown.sql` |
 | `trg_moderation_actions_pin` | `moderation_actions` | BEFORE INSERT | `20260923010000_track_takedown.sql` |
 | `trg_playlist_posts_reject_spotify` | `playlist_posts` | before insert or update of post_id | `20261013000000_spotify_reposts.sql` |

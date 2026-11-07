@@ -28,6 +28,15 @@ export function serverNow(): number {
   return Date.now() + offsetMs;
 }
 
+/**
+ * The server's clock, or null until a server time has been observed this session. For a
+ * caller that must not guess: with no observation, serverNow() is this phone's own clock,
+ * which can be minutes off.
+ */
+export function serverNowIfKnown(): number | null {
+  return known ? serverNow() : null;
+}
+
 /** For tests. */
 export function __resetServerClock(): void {
   offsetMs = 0;

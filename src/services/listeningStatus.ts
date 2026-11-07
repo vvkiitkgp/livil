@@ -20,12 +20,13 @@
  */
 import { supabase } from '../../lib/supabase';
 import {
-  LISTENING_LIVE_WINDOW_MS,
+  listeningExpiryAt,
   planListeningWrite,
   type ListeningTrack,
   type ReportedListening,
 } from '../utils/listeningStatus';
 import { getShowActivity } from './profileService';
+import { serverNowIfKnown } from '../utils/serverClock';
 
 export type { ListeningTrack } from '../utils/listeningStatus';
 
@@ -178,6 +179,8 @@ export type ListeningRowChange = {
   postId: string | null;
   title: string;
   artistName: string;
+  /** The row's server-stamped `updated_at` — when this heartbeat was written, not received. */
+  updatedAt: string | null;
 };
 
 /**
@@ -204,6 +207,7 @@ export function subscribeListeningChanges(
           postId: typeof row.post_id === 'string' ? row.post_id : null,
           title: typeof row.track_title === 'string' ? row.track_title : '',
           artistName: typeof row.artist_name === 'string' ? row.artist_name : '',
+          updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
         });
       },
     )
@@ -211,12 +215,21 @@ export function subscribeListeningChanges(
   return () => { void supabase.removeChannel(channel); };
 }
 
-/** A heartbeat for a track already on screen: keep it up for another live window. */
-export function extendListening(entry: ListeningNow, change: ListeningRowChange): ListeningNow {
+/**
+ * A heartbeat for a track already on screen: keep it up for what is left of its live window,
+ * counted from when the heartbeat was WRITTEN (listeningExpiryAt), so a late-delivered one
+ * cannot keep a listener who has gone up for another full window.
+ */
+export function extendListening(
+  entry: ListeningNow,
+  change: ListeningRowChange,
+  nowMs: number = Date.now(),
+  serverNowMs: number | null = serverNowIfKnown(),
+): ListeningNow {
   return {
     ...entry,
     title: change.title || entry.title,
     artistName: change.artistName || entry.artistName,
-    expiresAtMs: Date.now() + LISTENING_LIVE_WINDOW_MS,
+    expiresAtMs: listeningExpiryAt(change.updatedAt, nowMs, serverNowMs),
   };
 }

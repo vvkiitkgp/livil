@@ -69,6 +69,7 @@ import ListeningStatusReporter from '../components/ListeningStatusReporter';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { AppUpdatePrompt } from '../components/AppUpdatePrompt';
+import { setLivilLinkHandler } from '../services/livilLinks';
 import SpotifyClipboardPrompt from '../components/SpotifyClipboardPrompt';
 import { RootStackParamList } from './types';
 import { nudgeWelcomeEmail } from '../../shared/services/welcomeEmail';
@@ -502,7 +503,13 @@ export default function RootNavigator() {
     });
 
     const sub = Linking.addEventListener('url', ({ url }) => { void handleDeepLink(url); });
-    return () => sub.remove();
+    // A Livil post/profile link tapped inside the app (a chat message) takes the same road
+    // as one arriving from outside (services/livilLinks.ts).
+    setLivilLinkHandler(url => openShareLink(url, what => notifyShareUnavailableRef.current(what)));
+    return () => {
+      sub.remove();
+      setLivilLinkHandler(null);
+    };
   }, []);
 
   useEffect(() => {

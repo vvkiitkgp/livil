@@ -113,6 +113,11 @@ export async function readCopiedText(os: string = Platform.OS): Promise<CopiedTe
   return { text, askedToPaste: Date.now() - started >= ASKED_MIN_MS };
 }
 
+/** Puts `text` on the clipboard (a chat message or a link the person chose to copy). */
+export function copyText(text: string): void {
+  (loadClipboard() ?? CoreClipboard).setString(text);
+}
+
 /** Empties the clipboard. */
 export function clearCopiedText(): void {
   (loadClipboard() ?? CoreClipboard).setString('');

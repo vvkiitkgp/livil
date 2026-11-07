@@ -1703,7 +1703,7 @@ export async function handler(req: Request): Promise<Response> {
   // iOS cannot count for itself: the badge is whatever the payload says it is, and the
   // app is not running to work it out. So the SENDER has to know the recipient's unread
   // total, which only the database can answer -- see the `unread_badge_count_for` SQL
-  // function (20260914000000_unread_badge_count.sql).
+  // function (20260914000000_unread_badge_count.sql, restated in 20261119010000_chat_delete.sql).
   //
   // Android needs nothing here: it has no badge-setting API and derives the number from
   // the notifications in the tray (src/services/appBadge.ts).

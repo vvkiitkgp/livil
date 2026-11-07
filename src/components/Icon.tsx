@@ -22,14 +22,22 @@ import {
   ArrowSquareOut,
   ArrowUp,
   ArrowsClockwise,
+  Car,
   Clock,
+  Copy,
   ArrowsInSimple,
   Bell,
   BellSlash,
   Broadcast,
   Camera,
   DownloadSimple,
+  ForkKnife,
+  Hash,
   Image as PhImage,
+  Lightbulb,
+  PawPrint,
+  Smiley,
+  SoccerBall,
   Timer,
   VideoCamera,
   CaretDown,
@@ -46,6 +54,7 @@ import {
   DotsSixVertical,
   DotsThree,
   Envelope,
+  Eraser,
   Eye,
   EyeSlash,
   Faders,
@@ -112,11 +121,13 @@ import Svg, { Path } from 'react-native-svg';
 import { COLORS } from '../theme/colors';
 
 export type IconName =
+  // the reaction sheet's emoji categories
+  | 'emojiSmileys' | 'emojiPeople' | 'emojiNature' | 'emojiFood' | 'emojiActivity' | 'emojiTravel' | 'emojiObjects' | 'emojiSymbols'
   // playback & transport
   | 'play' | 'playCircle' | 'pause' | 'skipForward' | 'skipBack' | 'repeat' | 'repeatOnce' | 'shuffle' | 'queue'
   // engagement / social
   | 'heart' | 'comment' | 'repost' | 'overflow' | 'flag' | 'trash' | 'reply'
-  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown'
+  | 'share' | 'externalLink' | 'link' | 'tombstone' | 'block' | 'crown' | 'copy' | 'eraser'
   // navigation & chrome
   | 'back' | 'backArrow' | 'forward' | 'send' | 'messages' | 'arrowRight' | 'arrowUp' | 'arrowDown'
   | 'collapse' | 'close' | 'clear' | 'add' | 'compose' | 'edit' | 'dragHandle' | 'upload'
@@ -172,6 +183,14 @@ const FEED_SEAM =
  * `compose` (CHAT_CIRCLE_PLUS) and `layoutList` (FEED_SEAM).
  */
 const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [PhComponent, IconWeight]> = {
+  emojiSmileys: [Smiley, 'regular'],
+  emojiPeople: [HandWaving, 'regular'],
+  emojiNature: [PawPrint, 'regular'],
+  emojiFood: [ForkKnife, 'regular'],
+  emojiActivity: [SoccerBall, 'regular'],
+  emojiTravel: [Car, 'regular'],
+  emojiObjects: [Lightbulb, 'regular'],
+  emojiSymbols: [Hash, 'regular'],
   // playback
   play: [Play, 'fill'],
   // A filled disc with the triangle cut out — the Spotify repost card's play (SpotifyPostCard).
@@ -203,6 +222,10 @@ const REGISTRY: Record<Exclude<IconName, 'drum' | 'compose' | 'layoutList'>, [Ph
   externalLink: [ArrowSquareOut, 'regular'],
   // A profile link (livil-music.com/@you) shown in the Share profile sheet.
   link: [LinkSimple, 'bold'],
+  // Copy a chat message's text (the message long-press menu).
+  copy: [Copy, 'regular'],
+  // Clear a chat's messages (the conversation's options menu).
+  eraser: [Eraser, 'regular'],
   tombstone: [Prohibit, 'regular'],
   // Same glyph as `tombstone`, deliberately a separate name: one marks removed
   // content, the other is the block action. They only happen to look alike.

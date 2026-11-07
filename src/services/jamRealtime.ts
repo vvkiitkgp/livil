@@ -64,6 +64,11 @@ export function subscribeToConversation(
    * own initial load covers that.
    */
   onNeedsCatchUp?: () => void,
+  /**
+   * A message in this chat was deleted for everyone (its deleted_at was set). The row the
+   * event carries has its words erased already (20261119010000).
+   */
+  onMessageDeleted?: (messageId: string, deletedAt: string) => void,
 ): RealtimeChannel {
   const key = `conv:${conversationId}`;
   let joinedOnce = false;
@@ -140,6 +145,22 @@ export function subscribeToConversation(
         } catch (e) {
           console.log(`[realtime] ${key} handler threw:`, (e as Error)?.message ?? String(e));
           onNeedsCatchUp?.();
+        }
+      },
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `conversation_id=eq.${conversationId}`,
+      },
+      payload => {
+        const row = payload.new as { id?: string; deleted_at?: string | null } | undefined;
+        if (row?.id && row.deleted_at) {
+          console.log(`[realtime] ${key} message deleted`, row.id);
+          onMessageDeleted?.(row.id, row.deleted_at);
         }
       },
     )

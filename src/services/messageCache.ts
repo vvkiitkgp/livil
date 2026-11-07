@@ -85,6 +85,13 @@ export const messageCache = {
     await writeJson(K_MSGS(conversationId), existing);
   },
 
+  /** Drop one chat from the cached chat list (Delete chat), so it does not flash back. */
+  async removeFromInbox(conversationId: string): Promise<void> {
+    const existing = await readJson<ConversationSummary[]>(K_INBOX);
+    if (!existing || !existing.some(c => c.id === conversationId)) { return; }
+    await writeJson(K_INBOX, existing.filter(c => c.id !== conversationId));
+  },
+
   // ── Housekeeping ───────────────────────────────────────────────────────────
   async clearConversation(conversationId: string): Promise<void> {
     try {
