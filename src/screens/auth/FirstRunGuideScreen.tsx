@@ -169,7 +169,7 @@ export default function FirstRunGuideScreen({ onDone, onPicked, userId, mode = '
             ) : null}
             <View style={styles.copy}>
               <Text style={styles.headline}>{card.headline}</Text>
-              <Text style={styles.line}>{lineFor(card, mode)}</Text>
+              <CardLine text={lineFor(card, mode)} highlight={card.highlight} />
             </View>
           </View>
         )}
@@ -259,6 +259,19 @@ function StepFade({ step, children }: { step: number; children: React.ReactNode 
   return <Reanimated.View style={[styles.fill, style]}>{children}</Reanimated.View>;
 }
 
+/** A card's line, with its `highlight` phrase (if any) set apart. */
+function CardLine({ text, highlight }: { text: string; highlight?: string }) {
+  const at = highlight ? text.indexOf(highlight) : -1;
+  if (!highlight || at < 0) { return <Text style={styles.line}>{text}</Text>; }
+  return (
+    <Text style={styles.line}>
+      {text.slice(0, at)}
+      <Text style={styles.lineHighlight}>{highlight}</Text>
+      {text.slice(at + highlight.length)}
+    </Text>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg, paddingHorizontal: 28 },
   // `left` is set inline from the window width; the SafeAreaView's horizontal padding
@@ -295,6 +308,11 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: COLORS.purpleLight,
     textAlign: 'center',
+  },
+  lineHighlight: {
+    fontFamily: FONTS.monoBold,
+    color: COLORS.white,
+    backgroundColor: 'rgba(139, 61, 255, 0.32)',
   },
   bottom: { gap: 20, alignItems: 'center', paddingBottom: 8 },
   dots: { flexDirection: 'row', gap: 6 },

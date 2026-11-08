@@ -42,6 +42,12 @@ it('leaves the list alone while the header is still in view', () => {
   expect(scrollToOffset).not.toHaveBeenCalled();
 });
 
+it('scrolls back up to the header for a tap on the tab already showing', () => {
+  api.trackScroll(2400);
+  act(() => { api.scrollToTop(); });
+  expect(scrollToOffset).toHaveBeenCalledWith({ offset: 0, animated: true });
+});
+
 it('keeps the list one screen taller than the header', () => {
   expect(api.minContentHeight).toBe(612 + 700);
 });

@@ -24,6 +24,8 @@ export type GuideCard = {
   firstRunOnly?: boolean;
   /** Replaces `line` on a replay from Settings, where the first-run steps are skipped. */
   replayLine?: string;
+  /** A phrase of the line to set apart (white, bold, on a highlighter wash). Must appear in it. */
+  highlight?: string;
 };
 
 export const GUIDE_CARDS: GuideCard[] = [
@@ -38,12 +40,13 @@ export const GUIDE_CARDS: GuideCard[] = [
     key: 'player',
     headline: 'Livil music player',
     line: 'Uploaded songs from independent artists on Livil play here. Tap to play, swipe up to open, flick for the next song.',
+    highlight: 'independent artists',
     Illustration: PlayerIllustration,
   },
   {
     key: 'friends',
     headline: 'Find your friends',
-    line: 'Add people who match your 💜 vibe, from Search or your feed.',
+    line: 'Add people who match your vibe 💜, from Search or your feed.',
     Illustration: FindFriendsIllustration,
   },
   {
@@ -78,7 +81,7 @@ export const GUIDE_CARDS: GuideCard[] = [
  * notifications pop-up for new accounts.
  */
 export const NOTIFY_ASK = {
-  cta: 'Turn on notifications',
+  cta: 'Enable notifications',
   note: 'You can turn them off in Settings anytime.',
 };
 

@@ -5,7 +5,7 @@ import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/fonts';
 import { Icon } from '../Icon';
 import { kf, useLoop } from './timeline';
-import { EqBars, Finger, Orb, Phone, PHONE_INNER_W, ORB, ORB_BOTTOM, TrackTitle } from './primitives';
+import { EqBars, Finger, IndieVibesChip, Orb, Phone, PHONE_INNER_W, ORB, ORB_BOTTOM, TrackTitle } from './primitives';
 
 /**
  * The player card: tap to play, swipe up to open (and back), flick for the next song —
@@ -47,7 +47,7 @@ export function TapIllustration({ ms = 6000 }: SceneProps) {
   const eq = useAnimatedStyle(() => ({ opacity: kf(t.value, [[28, 0], [30, 1], [76, 1], [78, 0]]) }));
 
   return (
-    <Phone>
+    <Phone rowTag={<IndieVibesChip />}>
       <EqBars style={[styles.eqAboveOrb, eq]} />
       <Reanimated.View style={[styles.ripple, ring]} pointerEvents="none" />
       <Orb style={orb} icon={null}>
@@ -93,7 +93,7 @@ export function SwipeUpIllustration({ ms = 5000 }: SceneProps) {
   const title = useAnimatedStyle(() => ({ opacity: kf(t.value, [[0, 0], [34, 0], [44, 1], [68, 1], [80, 0], [100, 0]]) }));
 
   return (
-    <Phone>
+    <Phone rowTag={<IndieVibesChip />}>
       <Reanimated.View style={[styles.growFrame, frame]}>
         <Reanimated.View style={[StyleSheet.absoluteFill, styles.art, art]}>
           <Reanimated.View style={[styles.artText, title]}>
@@ -130,7 +130,7 @@ export function FlickIllustration({ ms = 4500 }: SceneProps) {
   }));
 
   return (
-    <Phone>
+    <Phone rowTag={<IndieVibesChip />}>
       <Reanimated.Text style={[styles.flickLabel, label]}>NEXT SONG</Reanimated.Text>
       <Orb style={orb} icon={null}>
         <View style={[StyleSheet.absoluteFill, styles.artA]} />
