@@ -223,7 +223,7 @@ export default function SettingsScreen() {
         <SettingsSection title="Follow us">
           <SettingsRow
             icon="instagram"
-            label="Instagram"
+            label="Follow us on Instagram"
             subtitle="New features, behind the scenes, and what's next"
             external
             onPress={() => { void openUrl(INSTAGRAM_URL); }}

@@ -492,7 +492,10 @@ export default function InboxScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Messages</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={styles.headerSubtitle}>Only friends</Text>
+        </View>
         <TouchableOpacity
           style={styles.composeButton}
           activeOpacity={0.85}
@@ -612,13 +615,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: COLORS.border,
   },
-  headerTitle: {
-    flex: 1,
-    color: COLORS.white,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
+  headerText: { flex: 1 },
+  /** Same type as the Search tab's title and subtitle. */
+  headerTitle: { color: COLORS.white, fontSize: 32, fontWeight: '800', letterSpacing: -0.5 },
+  headerSubtitle: { color: COLORS.textSecondary, fontSize: 14, marginTop: 2 },
   composeButton: {
     width: 38,
     height: 38,

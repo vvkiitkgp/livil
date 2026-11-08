@@ -79,6 +79,13 @@ describe('GUIDE_CARDS', () => {
     expect(lineFor(notify, 'replay')).toBe(notify.replayLine);
   });
 
+  it('a highlighted phrase is in its line, in both modes — reworded copy must not drop it silently', () => {
+    GUIDE_CARDS.filter(c => c.highlight).forEach(c => {
+      expect(lineFor(c, 'first')).toContain(c.highlight);
+      expect(lineFor(c, 'replay')).toContain(c.highlight);
+    });
+  });
+
   it('every card has drift coverage, and every coverage entry is a card', () => {
     // scripts/check-guide-drift.mjs reads coverage.json in CI. A card without an
     // entry can go stale unnoticed; an entry without a card is a typo nobody sees.

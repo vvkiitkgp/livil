@@ -18,6 +18,8 @@ import type { FlatList, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEve
  *     and, if the tabs were pinned, puts them back at exactly the pinned offset once the
  *     new content has rendered.
  *
+ * `scrollToTop()` is for a tap on the tab that is already showing: back up to the header.
+ *
  * Wire up: `ref`, `onLayout`, `onScroll` (or `trackScroll` from an existing handler) and
  * `minContentHeight` on the FlatList; `onHeaderLayout` on the header's root view.
  */
@@ -52,9 +54,13 @@ export function usePinnedTabsScroll<T>() {
     });
   }, [headerHeight]);
 
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+
   const minContentHeight = headerHeight > 0 && viewportHeight > 0
     ? headerHeight + viewportHeight
     : undefined;
 
-  return { listRef, onHeaderLayout, onLayout, onScroll, trackScroll, keepTabsPinned, minContentHeight };
+  return { listRef, onHeaderLayout, onLayout, onScroll, trackScroll, keepTabsPinned, scrollToTop, minContentHeight };
 }

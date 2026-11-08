@@ -452,7 +452,11 @@ export default function UserProfileScreen() {
   const handleTabChange = useCallback(
     (next: ProfileTab) => {
       const shown = pillTab ?? tab;
-      if (next === shown) { return; }
+      // The tab already showing: back to the top. Not mid-switch — the switch re-pins.
+      if (next === shown) {
+        if (pillTab === null) { pinned.scrollToTop(); }
+        return;
+      }
       playback.pauseAll();
       const order = visibleTabsFor(tabCounts).map(t => t.key);
       setPillTab(next);
@@ -1020,7 +1024,7 @@ export default function UserProfileScreen() {
                 onPress={() => navigation.navigate('ProfilePeople', { userId, username: profile?.username, kind: 'stars' })}
               >
                 <Text style={styles.socialPillValue}>{formatStat(followCounts.stars)}</Text>
-                <Text style={styles.socialPillLabel}>Stars</Text>
+                <Text style={styles.socialPillLabel}>Starred</Text>
               </TouchableOpacity>
             </View>
 

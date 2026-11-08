@@ -11,7 +11,9 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { COLORS } from '../../theme/colors';
 import { FONTS } from '../../theme/fonts';
+import { GradientBorder } from '../GradientBorder';
 import { Icon, type IconName } from '../Icon';
+import { Logo } from '../Logo';
 import { kf, type Stop } from './timeline';
 
 /**
@@ -38,24 +40,29 @@ const PURPLE_GLOW = 'rgba(168, 85, 247, 0.32)';
 const FINGER_FILL = 'rgba(255, 255, 255, 0.22)';
 const FINGER_RING = 'rgba(255, 255, 255, 0.85)';
 
-/** The phone frame. `rows` draws the faded feed skeleton behind the scene. */
+/**
+ * The phone frame. `rows` draws the faded feed skeleton behind the scene; `rowTag` is drawn
+ * on every row, as a source tag sits on each real card's cover.
+ */
 export function Phone({
   children,
   rows = 4,
   rowsTop = 22,
   rowsOpacity = 1,
+  rowTag,
 }: {
   children?: React.ReactNode;
   rows?: number;
   rowsTop?: number;
   rowsOpacity?: number;
+  rowTag?: React.ReactNode;
 }) {
   return (
     <View style={styles.phone}>
       {rows > 0 ? (
         <View style={[styles.rows, { paddingTop: rowsTop, opacity: rowsOpacity }]} pointerEvents="none">
           {Array.from({ length: rows }, (_, i) => (
-            <View key={i} style={styles.row} />
+            <View key={i} style={styles.row}>{rowTag}</View>
           ))}
         </View>
       ) : null}
@@ -242,6 +249,20 @@ export function TrackTitle({ children, size = 14 }: { children: string; size?: n
   );
 }
 
+/**
+ * The "Indie Vibes" tag an upload wears on its cover (PostCard's IndieVibesTag), at the mini
+ * phone's scale: the same pill, glow, mark and words, about 0.6× the real 31dp.
+ */
+export function IndieVibesChip() {
+  return (
+    <View style={styles.indieChip}>
+      <GradientBorder borderRadius={999} strokeWidth={1} />
+      <Logo size={12} color={COLORS.white} />
+      <Text style={styles.indieChipName} numberOfLines={1}>Indie Vibes</Text>
+    </View>
+  );
+}
+
 /** Cover-art rectangle (purple gradient stand-in). */
 export function Cover({ height = 84, style }: { height?: number; style?: StyleProp<ViewStyle> }) {
   return <View style={[styles.cover, { height }, style]} />;
@@ -306,6 +327,20 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: FINGER_RING,
   },
+  // No `overflow: 'hidden'`: it is a GradientBorder host.
+  indieChip: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 19,
+    paddingHorizontal: 7,
+    borderRadius: 999,
+    backgroundColor: 'rgba(10,10,15,0.6)',
+  },
+  indieChipName: { color: COLORS.white, fontSize: 9, fontWeight: '800' },
   cover: {
     borderRadius: 10,
     backgroundColor: COLORS.purpleRoyal,

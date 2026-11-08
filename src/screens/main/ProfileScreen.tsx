@@ -492,7 +492,11 @@ export default function ProfileScreen() {
   const handleTabChange = useCallback(
     (next: ProfileTab) => {
       const shown = pillTab ?? tab;
-      if (next === shown) {return;}
+      // The tab already showing: back to the top. Not mid-switch — the switch re-pins.
+      if (next === shown) {
+        if (pillTab === null) { pinned.scrollToTop(); }
+        return;
+      }
       playback.pauseAll();
       const order = visibleTabsFor(tabCounts).map(t => t.key);
       setPillTab(next);
@@ -983,7 +987,7 @@ export default function ProfileScreen() {
               >
                 <Text style={styles.socialPillValue}>{formatStat(followCounts[kind])}</Text>
                 <Text style={styles.socialPillLabel}>
-                  {kind === 'fans' ? 'Fans' : kind === 'friends' ? 'Friends' : 'Stars'}
+                  {kind === 'fans' ? 'Fans' : kind === 'friends' ? 'Friends' : 'Starred'}
                 </Text>
               </TouchableOpacity>
             </React.Fragment>

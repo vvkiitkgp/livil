@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import {
   KeyboardAwareScrollView,
   KeyboardController,
@@ -10,6 +10,7 @@ import { FONTS } from '../../theme/fonts';
 import FormInput from '../FormInput';
 import { GradientBorder } from '../GradientBorder';
 import { Icon } from '../Icon';
+import { Logo } from '../Logo';
 import RoundTickButton, { ROUND_TICK_SIZE } from '../RoundTickButton';
 import CoverFallback from '../CoverFallback';
 import { SpotifyLogo } from '../SpotifyLogo';
@@ -196,6 +197,14 @@ export function PickThree({
           onChangeText={setQuery}
           onFocus={raiseSearch}
           placeholder={spotifyOn ? 'Search Livil and Spotify' : 'Search Livil'}
+          // The marks say where songs come from at a glance — people read past a grey
+          // placeholder and never knew Spotify songs could be picked (owner, 2026-11-08).
+          leading={
+            <View style={styles.searchLogos}>
+              <LivilBadge />
+              {spotifyOn ? <SpotifyLogo size="xs" /> : null}
+            </View>
+          }
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
@@ -215,7 +224,10 @@ export function PickThree({
 
       {!searching ? (
         <>
-          <View style={styles.headingRow}><Text style={styles.heading}>INDIE VIBES</Text></View>
+          <View style={styles.headingRow}>
+            <Text style={styles.heading}>INDIE VIBES</Text>
+            <LivilBadge style={styles.headingBadge} />
+          </View>
           {suggested === null ? (
             <ActivityIndicator color={COLORS.purpleLight} style={styles.spinner} />
           ) : suggested === 'failed' ? (
@@ -237,7 +249,10 @@ export function PickThree({
           ) : null}
           {livil.length > 0 ? (
             <>
-              <View style={styles.headingRow}><Text style={styles.heading}>ON LIVIL</Text></View>
+              <View style={styles.headingRow}>
+                <Text style={styles.heading}>ON LIVIL</Text>
+                <LivilBadge style={styles.headingBadge} />
+              </View>
               {rows(livil)}
             </>
           ) : null}
@@ -262,6 +277,11 @@ export function PickThree({
       )}
     </KeyboardAwareScrollView>
   );
+}
+
+/** Livil's mark on its round black ground — the Livil counterpart of the Spotify icon here. */
+function LivilBadge({ style }: { style?: StyleProp<ViewStyle> }) {
+  return <View style={[styles.livilBadge, style]}><Logo size={21} color={COLORS.white} /></View>;
 }
 
 /** Square art with Livil's or Spotify's corner rule — Spotify's art is never drawn on. */
@@ -422,6 +442,20 @@ const styles = StyleSheet.create({
   art: { overflow: 'hidden', backgroundColor: COLORS.card },
   artImage: { width: '100%', height: '100%' },
   searchWrap: { marginTop: 18 },
+  // Owns the gaps to the field's edge and to the text. 11 ≥ half the Spotify icon's 21dp:
+  // the clear space its guidelines ask for on every side.
+  searchLogos: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingLeft: 14, paddingRight: 11 },
+  // Livil's mark on a round black ground, like Spotify's icon beside it (owner, 2026-11-08).
+  // The mark is wide (about 2.6:1), so it nearly spans the circle: at 21 of 26 its corners
+  // still clear the edge.
+  livilBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -433,6 +467,7 @@ const styles = StyleSheet.create({
   heading: { flexShrink: 1, fontFamily: FONTS.mono, fontSize: 11, letterSpacing: 2, color: COLORS.textSecondary },
   // Centred over the round marks below it.
   headingLogo: { marginRight: (ROUND_TICK_SIZE - 21) / 2 },
+  headingBadge: { marginRight: (ROUND_TICK_SIZE - 26) / 2 },
   hint: { fontFamily: FONTS.mono, fontSize: 13, lineHeight: 19, color: COLORS.textSecondary, paddingTop: 14 },
   spinner: { paddingVertical: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 58, paddingVertical: 6 },

@@ -51,7 +51,7 @@ const COPY: Record<ProfilePeopleKind, {
   emptyIcon: IconName;
 }> = {
   friends: { title: 'Friends', one: 'friend', many: 'friends', search: 'Search friends…', empty: 'No friends yet', emptyIcon: 'friends' },
-  stars:   { title: 'Stars',   one: 'star',   many: 'stars',   search: 'Search stars…',   empty: 'Not starring anyone yet', emptyIcon: 'star' },
+  stars:   { title: 'Starred', one: 'star',   many: 'stars',   search: 'Search stars…',   empty: 'Not starring anyone yet', emptyIcon: 'star' },
   fans:    { title: 'Fans',    one: 'fan',    many: 'fans',    search: 'Search fans…',    empty: 'No fans yet', emptyIcon: 'star' },
   mutualFriends: { title: 'Mutual friends', one: 'mutual friend', many: 'mutual friends', search: 'Search mutual friends…', empty: 'No mutual friends', emptyIcon: 'friends' },
   friendFans: { title: 'Friends who star', one: 'friend', many: 'friends', search: 'Search friends…', empty: 'None of your friends star them yet', emptyIcon: 'star' },

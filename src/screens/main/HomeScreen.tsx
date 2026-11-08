@@ -179,7 +179,7 @@ function FriendStoriesRow({
   if (loading) {
     return (
       <View style={styles.storiesSection}>
-        <Text style={styles.storiesHeading}>Friends</Text>
+        <Text style={styles.storiesHeading}>Stories</Text>
         <FriendStorySkeletonStrip />
       </View>
     );
@@ -188,9 +188,9 @@ function FriendStoriesRow({
   if (stories.length === 0) {
     return (
       <View style={styles.storiesSection}>
-        <Text style={styles.storiesHeading}>Friends</Text>
+        <Text style={styles.storiesHeading}>Stories</Text>
         <Text style={styles.storiesEmpty}>
-          No stories from friends yet. Reposts as stories from your friends will appear here.
+          No stories yet. Repost an Indie Vibes song and pick Story to share a 10s clip with friends.
         </Text>
       </View>
     );
@@ -198,7 +198,7 @@ function FriendStoriesRow({
 
   return (
     <View style={styles.storiesSection}>
-      <Text style={styles.storiesHeading}>Friends</Text>
+      <Text style={styles.storiesHeading}>Stories</Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
