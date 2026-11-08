@@ -65,6 +65,7 @@ import FloatingPlayer from '../components/FloatingPlayer';
 import FullScreenPlayer from '../components/FullScreenPlayer';
 import GlobalAudioPlayer from '../components/GlobalAudioPlayer';
 import ListeningStatusReporter from '../components/ListeningStatusReporter';
+import ChatTypingListener from '../components/ChatTypingListener';
 import RealtimeConnectionGate from '../components/RealtimeConnectionGate';
 import NotificationPermissionModal from '../components/NotificationPermissionModal';
 import { AppUpdatePrompt } from '../components/AppUpdatePrompt';
@@ -1030,6 +1031,7 @@ export default function RootNavigator() {
         <>
           <GlobalAudioPlayer />
           <ListeningStatusReporter />
+          <ChatTypingListener userId={session.user.id} />
           <FullScreenPlayer />
           <FloatingPlayer />
         </>

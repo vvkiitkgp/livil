@@ -1,4 +1,31 @@
-import { chatReceipts, type ReceiptMessage } from '../chatReceipts';
+import { chatReceipts, seenLabel, type ReceiptMessage } from '../chatReceipts';
+
+describe('seenLabel', () => {
+  const now = Date.parse('2026-11-08T12:00:00.000Z');
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  const MIN = 60_000;
+  const HOUR = 60 * MIN;
+  const DAY = 24 * HOUR;
+
+  it.each([
+    [ago(20_000), 'Seen just now'],
+    [ago(2 * MIN), 'Seen 2m ago'],
+    [ago(5 * HOUR), 'Seen 5h ago'],
+    [ago(5 * DAY), 'Seen 5d ago'],
+    [ago(21 * DAY), 'Seen 3w ago'],
+  ])('%s → %s', (iso, label) => {
+    expect(seenLabel(iso, now)).toBe(label);
+  });
+
+  it('a phone whose clock runs behind never shows a time in the future', () => {
+    expect(seenLabel(ago(-5 * MIN), now)).toBe('Seen just now');
+  });
+
+  it('no time known, or a broken one: plain "Seen", never "Seen  ago"', () => {
+    expect(seenLabel(null, now)).toBe('Seen');
+    expect(seenLabel('not a date', now)).toBe('Seen');
+  });
+});
 
 const ME = 'me';
 const at = (min: number) => `2026-11-02T10:${String(min).padStart(2, '0')}:00.000Z`;

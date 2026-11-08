@@ -19,6 +19,8 @@
  * guess.
  */
 
+import { relativeTime } from './commentTime';
+
 export type ReceiptStatus = 'sending' | 'sent' | 'delivered' | 'seen';
 
 export type ReceiptMessage = {
@@ -30,6 +32,16 @@ export type ReceiptMessage = {
 };
 
 const isPending = (m: ReceiptMessage) => m.id.startsWith('opt-');
+
+/**
+ * "Seen just now", "Seen 2m ago", "Seen 5d ago". Plain "Seen" when the time is unknown (the
+ * other person's row has no time yet, or 20261120000000 is not applied here).
+ */
+export function seenLabel(seenAt: string | null, now: number = Date.now()): string {
+  const ago = seenAt ? relativeTime(seenAt, now) : '';
+  if (!ago) { return 'Seen'; }
+  return ago === 'just now' ? 'Seen just now' : `Seen ${ago} ago`;
+}
 
 /** Message id → its label. Messages newest first (the chat's order). */
 export function chatReceipts(
