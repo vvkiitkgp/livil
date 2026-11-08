@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-599 TypeScript file(s) under `src/`, 117,510 lines.
+601 TypeScript file(s) under `src/`, 117,778 lines.
 
 ## Size hotspots
 
@@ -27,10 +27,10 @@ reading alone (Constitution P28).
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 3253 |
-| `src/screens/main/UploadScreen.tsx` | 2594 |
+| `src/screens/main/UploadScreen.tsx` | 2596 |
 | `src/components/FullScreenPlayer.tsx` | 2446 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/components/PostCard.tsx` | 1497 |
+| `src/components/PostCard.tsx` | 1528 |
 | `src/screens/main/UserProfileScreen.tsx` | 1475 |
 | `src/screens/main/ProfileScreen.tsx` | 1468 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
@@ -40,7 +40,7 @@ reading alone (Constitution P28).
 | `src/screens/studio/studioEngine.ts` | 1095 |
 | `src/components/FloatingPlayer.tsx` | 1083 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
-| `src/screens/main/RepostScreen.tsx` | 1003 |
+| `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
@@ -50,7 +50,7 @@ reading alone (Constitution P28).
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 23 file(s) over the threshold against **37 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 23 file(s) over the threshold against **39 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -109,12 +109,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,095 lines.
+75 file(s), 35,139 lines.
 
 | File | Lines |
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 3253 |
-| `src/screens/main/UploadScreen.tsx` | 2594 |
+| `src/screens/main/UploadScreen.tsx` | 2596 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1475 |
 | `src/screens/main/ProfileScreen.tsx` | 1468 |
@@ -122,7 +122,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/studio/studioEngine.ts` | 1095 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
-| `src/screens/main/RepostScreen.tsx` | 1003 |
+| `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
@@ -191,20 +191,20 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-190 file(s), 36,595 lines.
+190 file(s), 36,742 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/components/PostCard.tsx` | 1497 |
+| `src/components/PostCard.tsx` | 1528 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 1083 |
 | `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 483 |
+| `src/components/SpotifyPostCard.tsx` | 482 |
 | `src/components/MediaPlayer.tsx` | 468 |
-| `src/components/SpotifyPostCard.tsx` | 438 |
 | `src/components/QueueList.tsx` | 425 |
 | `src/components/ChatSongPicker.tsx` | 421 |
 | `src/components/DetailView.tsx` | 411 |
@@ -253,6 +253,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsRow.tsx` | 202 |
 | `src/components/SpotifyClipboardPrompt.tsx` | 201 |
 | `src/components/__tests__/SettingsRow.test.tsx` | 201 |
+| `src/components/UploadPreviewCard.tsx` | 200 |
 | `src/components/GradientBorder.tsx` | 198 |
 | `src/components/ReactionEmojiSheet.tsx` | 196 |
 | `src/components/auth/AuthStep.tsx` | 195 |
@@ -262,7 +263,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 186 |
-| `src/components/UploadPreviewCard.tsx` | 180 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ProfileTabBar.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |
@@ -289,6 +289,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/NotificationPermissionModal.tsx` | 140 |
 | `src/components/ShareRepostSheet.tsx` | 140 |
 | `src/components/StoryCard.tsx` | 132 |
+| `src/components/PostCardSkeleton.tsx` | 131 |
 | `src/components/UploadStep.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
 | `src/components/PlayerCloseTarget.tsx` | 129 |
@@ -331,7 +332,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SpotifyLogo.tsx` | 82 |
 | `src/components/__tests__/ChatReplySnippet.test.tsx` | 82 |
 | `src/components/onboarding/Crowd.tsx` | 81 |
-| `src/components/PostCardSkeleton.tsx` | 79 |
 | `src/components/UsernameBadges.tsx` | 78 |
 | `src/components/__tests__/shareBadgeParity.test.ts` | 78 |
 | `src/components/EmojiCoverArt.tsx` | 76 |
@@ -548,7 +548,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-37 file(s), 2,456 lines.
+39 file(s), 2,533 lines.
 
 | File | Lines |
 |---|---:|
@@ -576,6 +576,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useMentionInput.ts` | 59 |
 | `src/hooks/usePlayRecentlyPlayed.ts` | 56 |
 | `src/hooks/useTrackWaveform.ts` | 52 |
+| `src/hooks/__tests__/useOpenProfile.test.tsx` | 51 |
 | `src/hooks/useRunAfterDismiss.ts` | 50 |
 | `src/hooks/__tests__/useOriginalLikes.test.tsx` | 49 |
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |
@@ -587,6 +588,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/useMyDrafts.ts` | 34 |
 | `src/hooks/useTrackPlaysTotals.ts` | 30 |
 | `src/hooks/useOpenMention.ts` | 27 |
+| `src/hooks/useOpenProfile.ts` | 26 |
 | `src/hooks/useNowPlayingCommentsSync.ts` | 25 |
 | `src/hooks/useOriginalLikes.ts` | 23 |
 

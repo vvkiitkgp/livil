@@ -1698,6 +1698,8 @@ export default function UploadScreen() {
         imageUri={imageFile?.uri ?? null}
         durationSec={previewDurationSec}
         playing={!previewPaused}
+        // The same test the upload itself uses to set the pill (createTrack's madeWithLivil).
+        madeWithLivil={mode === 'audio' && !!studioFile && audio === studioFile}
         // A song plays in the card itself, like a feed post; a video keeps its thumbnail
         // and plays in the full-screen frame below.
         mediaSlot={mode === 'audio' && previewMedia ? (

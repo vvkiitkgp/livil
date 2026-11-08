@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { COLORS } from '../theme/colors';
@@ -9,6 +9,7 @@ import { haptics } from '../utils/haptics';
 import { usePostLike } from '../hooks/usePostLike';
 import { artistLine, useSpotifyAvailability, useSpotifyTrack } from '../services/spotify';
 import { useOpenInSpotify } from '../hooks/useOpenInSpotify';
+import { useOpenProfile } from '../hooks/useOpenProfile';
 import { friendlyErrorMessage } from '../utils/errorMessages';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
@@ -29,11 +30,13 @@ import { Button } from './Button';
 import ShareRepostSheet from './ShareRepostSheet';
 import { DoubleTapLike } from './DoubleTapLike';
 import { LikeHeart } from './LikeHeart';
+import Scrim from './Scrim';
 
 /**
  * The feed card for a Spotify repost (ADR-0027).
  *
- * Laid out like a Livil repost card — banner, header, title, caption, artwork, action row —
+ * Laid out like a Livil repost card — header, caption, the artwork with the title, artist
+ * and the "↻ from Spotify" tag over it, action row —
  * so it reads as the same kind of thing. What differs, and why:
  *
  *  - Tapping play OPENS SPOTIFY. Livil pauses its own player first; the single-engine rule
@@ -86,6 +89,9 @@ function initialsOf(name: string): string {
 const ACTION_ICON_SIZE = 26;
 /** Share's paper plane, drawn smaller inside an ACTION_ICON_SIZE box — see PostCard's. */
 const SHARE_ICON_SIZE = 22;
+/** The fade under the song's name on the artwork — PostCard's SONG_SCRIM_H (a value import
+ *  from PostCard would be circular: PostCard imports this file). */
+const SONG_SCRIM_H = 170;
 
 function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardProps) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -122,9 +128,9 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: Post
   const author = post.author;
   const authorName = author.displayName ?? author.username;
 
-  const openAuthor = useCallback(() => {
-    navigation.navigate('UserProfile', { userId: author.id });
-  }, [navigation, author.id]);
+  // Pushes, so it also works from inside someone's profile (useOpenProfile).
+  const openProfile = useOpenProfile();
+  const openAuthor = useCallback(() => openProfile(author.id), [openProfile, author.id]);
 
   const openSpotify = useOpenInSpotify('feed');
   // The "come back and like or comment" card follows only a hand-off from someone ELSE's
@@ -186,18 +192,8 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: Post
 
   return (
     <View style={styles.card}>
-      <View style={styles.repostBanner}>
-        <Icon name="repost" size={13} color={COLORS.purpleLight} />
-        <Text style={styles.repostBannerText} numberOfLines={1}>
-          <Text style={styles.repostBannerName} onPress={openAuthor}>{authorName}</Text>
-          {' reposted'}
-        </Text>
-        <View style={styles.fromTag} accessibilityLabel="From Spotify">
-          <Text style={styles.fromTagLabel}>FROM</Text>
-          <SpotifyLogo size="xs" withName />
-        </View>
-      </View>
-
+      {/* No "X reposted" band (owner, 2026-11-08), as on PostCard: the header names who
+          posted it and the "↻ from Spotify" tag on the artwork says what it is. */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.authorTap} activeOpacity={0.7} onPress={openAuthor} accessibilityLabel={`Open @${author.username}`}>
           <View style={styles.avatar}>
@@ -228,8 +224,6 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: Post
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.trackTitle} numberOfLines={2}>{title}</Text>
-      <Text style={styles.artist} numberOfLines={1}>{artist}</Text>
       {/* 4 lines, then "… See more" opens the rest in place (as on PostCard). */}
       {post.caption ? (
         <MentionText
@@ -240,34 +234,66 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: Post
         />
       ) : null}
 
-      {/* Artwork exactly as Spotify supplies it — nothing drawn on top, so a double tap likes
-          WITHOUT the heart burst (the action row's heart fills in). Tapping it opens the song,
-          like tapping a Livil cover plays it. */}
+      {/* The tap area, as on PostCard: the full-size artwork with the song and artist over
+          its bottom edge on a fade, and the "↻ from Spotify" tag in its top-right
+          corner. Those are the ONLY things drawn on Spotify's
+          artwork — the owner's call (2026-11-08), made knowing Spotify's guidelines ask for
+          artwork unaltered (ADR-0027). Nothing else goes on it, so a double tap still likes
+          WITHOUT the heart burst (the action row's heart fills in). Tapping anywhere opens
+          the song, like tapping a Livil post plays it. */}
       <DoubleTapLike
         onSingleTap={handleArtTap}
         onDoubleTap={handleDoubleTapLike}
         burst={false}
-        accessibilityLabel={`Play ${meta.track?.title ?? 'this song'} on Spotify`}
-        style={styles.artWrap}
+        accessibilityLabel={meta.status === 'ready'
+          ? `Play ${track!.title} by ${artistLine(track)} on Spotify`
+          : 'Play this song on Spotify'}
+        style={styles.tapArea}
       >
-        {track?.imageUrl ? (
-          <Image source={{ uri: track.imageUrl }} style={styles.art} resizeMode="cover" />
-        ) : (
-          // No artwork (still loading, or the lookup failed): the Spotify mark, which says
-          // where a tap goes. Its background is near-black because Spotify Green may only sit
-          // on black or white. pointerEvents="none" so the spinner / mark never takes the
-          // tap for itself — the whole square opens Spotify (owner report, 2026-10-26: a tap
-          // on the empty art did nothing while ▶ worked).
-          <View style={[styles.art, styles.artEmpty, meta.status !== 'loading' && styles.artFallback]}>
-            <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-              {meta.status === 'loading' ? (
-                <ActivityIndicator color={COLORS.purpleLight} />
-              ) : (
-                <SpotifyLogo size="lg" />
+        <View style={styles.coverBox}>
+          {track?.imageUrl ? (
+            <Image source={{ uri: track.imageUrl }} style={styles.art} resizeMode="cover" />
+          ) : (
+            // No artwork. Still loading: an empty box, the placeholder bars below marking
+            // where the words will land — no spinner (owner, 2026-11-08). The lookup failed:
+            // the Spotify mark, which says where a tap goes, on near-black because Spotify
+            // Green may only sit on black or white. pointerEvents="none" so the mark never
+            // takes the tap for itself — the whole area opens Spotify (owner report,
+            // 2026-10-26: a tap on the empty art did nothing while ▶ worked).
+            <View style={[styles.art, styles.artEmpty, meta.status !== 'loading' && styles.artFallback]}>
+              {meta.status === 'loading' ? null : (
+                <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+                  <SpotifyLogo size="lg" />
+                </View>
               )}
             </View>
+          )}
+          <Scrim edge="bottom" height={SONG_SCRIM_H} peakOpacity={0.85} />
+          <View style={styles.songOverlay} pointerEvents="none">
+            {meta.status === 'loading' ? (
+              // Where the words will land, while Spotify's details load — the same marks
+              // PostCardSkeleton draws, rather than an empty fade.
+              <>
+                <View style={[styles.loadingBar, styles.loadingTitle]} />
+                <View style={[styles.loadingBar, styles.loadingArtist]} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.trackTitle} numberOfLines={2}>{title}</Text>
+                <Text style={styles.artist} numberOfLines={1}>{artist}</Text>
+              </>
+            )}
           </View>
-        )}
+          {/* Where the song plays, on the artwork's top-right corner (owner, 2026-11-08; it
+              used to sit in a banner atop the card). Its own dark, slightly see-through pill is the
+              ground Spotify's green logo needs, whatever the artwork. */}
+          <View style={styles.fromTag} pointerEvents="none">
+            {/* The repost icon stands in for the word "Reposted" (owner, 2026-11-08). */}
+            <Icon name="repost" size={13} color={COLORS.white} />
+            <Text style={styles.fromTagLabel}>from</Text>
+            <SpotifyLogo size="xs" withName />
+          </View>
+        </View>
       </DoubleTapLike>
 
       <View style={styles.actionRow}>
@@ -346,7 +372,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: Post
   );
 }
 
-// Card, banner, header and stats styles mirror PostCard's on purpose: a Spotify repost and a
+// Card, header and stats styles mirror PostCard's on purpose: a Spotify repost and a
 // Livil repost should read as the same kind of post in the feed.
 const styles = StyleSheet.create({
   card: {
@@ -358,33 +384,24 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
-  repostBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.card,
-    marginTop: -14,
-    marginHorizontal: -14,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopLeftRadius: 19,
-    borderTopRightRadius: 19,
-  },
-  repostBannerText: { color: COLORS.textMuted, fontSize: 12, flex: 1 },
-  repostBannerName: { color: COLORS.textSecondary, fontWeight: '700' },
   fromTag: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: COLORS.bg,
+    // See-through a little, over the artwork (owner, 2026-11-08): #0A0A0F at 60%, still dark
+    // enough to be the ground Spotify's green logo needs.
+    backgroundColor: 'rgba(10,10,15,0.6)',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
-  fromTagLabel: { color: COLORS.textSecondary, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  // White and in words, over the artwork (owner, 2026-11-08) — it was a spaced-out grey "FROM".
+  fromTagLabel: { color: COLORS.white, fontSize: 11, fontWeight: '700' },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   authorTap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
   avatar: {
@@ -408,13 +425,40 @@ const styles = StyleSheet.create({
   timeDot: { color: COLORS.textMuted, fontSize: 12 },
   timeText: { color: COLORS.textMuted, fontSize: 12 },
   moreBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center' },
-  trackTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', letterSpacing: -0.3, marginTop: 12 },
-  artist: { color: COLORS.textSecondary, fontSize: 13, marginTop: 2 },
-  // White, as on Livil cards (owner, 2026-10-19).
-  caption: { color: COLORS.white, fontSize: 14, lineHeight: 20, marginTop: 8 },
-  artWrap: { marginTop: 12 },
-  // Spotify's mobile guideline: artwork corners rounded no more than 4px.
-  art: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: COLORS.card },
+  // White, as on Livil cards (owner, 2026-10-19). The first thing under the header now that
+  // the song's name sits on the artwork.
+  caption: { color: COLORS.white, fontSize: 14, lineHeight: 20, marginTop: 12 },
+  // The tap area, artwork and words over it: PostCard's tapArea / coverBox / songOverlay /
+  // trackTitle / artist, except the corners (below).
+  tapArea: { width: '100%', marginTop: 12 },
+  // Spotify's mobile guideline: artwork corners rounded no more than 4px. Clips so the fade
+  // follows those corners.
+  coverBox: { width: '100%', aspectRatio: 1, borderRadius: 4, overflow: 'hidden', backgroundColor: COLORS.card },
+  art: { width: '100%', height: '100%' },
+  songOverlay: { position: 'absolute', left: 14, right: 14, bottom: 12 },
+  loadingBar: { borderRadius: 8, backgroundColor: COLORS.border },
+  loadingTitle: { width: '58%', height: 18 },
+  loadingArtist: { width: '36%', height: 13, marginTop: 8 },
+  // Sized up for the cover (owner, 2026-11-08): the words are the cover's caption now.
+  trackTitle: {
+    color: COLORS.white,
+    fontSize: 21,
+    lineHeight: 25,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  artist: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 4,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
   artEmpty: { alignItems: 'center', justifyContent: 'center' },
   artFallback: { backgroundColor: COLORS.bg },
   // Same safety-net wrap as PostCard's actionRow: counters drop a line rather than overlap.

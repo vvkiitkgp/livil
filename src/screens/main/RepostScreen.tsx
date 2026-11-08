@@ -37,6 +37,8 @@ import type { RootStackParamList } from '../../navigation/types';
 import { closeAddFlow } from '../../navigation/closeAddFlow';
 import { MIN_REPOST_CLIP_SECONDS } from '../../../shared/constants/media';
 import MentionSuggestions from '../../components/MentionSuggestions';
+import Scrim from '../../components/Scrim';
+import { postCardStyles as cardStyles } from '../../components/PostCard';
 import { useMentionInput, useMentionListRoom } from '../../hooks/useMentionInput';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -61,6 +63,12 @@ function formatTime(seconds: number): string {
 }
 
 const MAX_STORY_CLIP = 10;
+/**
+ * The fade under the song's name on the preview. Shorter than the feed card's (SONG_SCRIM_H):
+ * a landscape video's preview is barely taller than the words, and the feed's fade would
+ * darken most of it.
+ */
+const PREVIEW_SCRIM_H = 140;
 
 /** A repost's minimum clip, capped to the track itself for tracks shorter than it. */
 function minPostClip(duration: number): number {
@@ -544,20 +552,53 @@ export default function RepostScreen() {
                       visible
                       pauseWhenOffScreen={false}
                     />
-                    {/* What a story would actually keep. Video only — a story
-                        shows audio cover art whole, on a card, never cropped. */}
-                    {mode === 'story' && media.kind === 'video' && videoAspect ? (
-                      <StoryCropFrame aspect={videoAspect} />
-                    ) : null}
-                    {/* Cumulative plays badge */}
+                    {/* The feed card's look (PostCard, owner 2026-11-08): the song and
+                        its artist over the bottom of the picture on a fade, and the
+                        "↻ from @creator" tag top-right — what the repost will show.
+                        The words take no touches, so a tap still plays / pauses. */}
+                    <Scrim edge="bottom" height={PREVIEW_SCRIM_H} peakOpacity={0.85} />
+                    <View style={cardStyles.songOverlay} pointerEvents="none">
+                      <View style={cardStyles.songInfo}>
+                        <Text style={cardStyles.trackTitle} numberOfLines={2}>
+                          {originalPost.track.title}
+                        </Text>
+                        <View style={cardStyles.artistRow}>
+                          <Text style={cardStyles.artist} numberOfLines={1}>
+                            {originalPost.author.displayName ?? originalPost.author.username}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                    {/* Stays a way to the creator's profile, as the @name under the
+                        player was. */}
+                    <TouchableOpacity
+                      style={cardStyles.sourceTag}
+                      activeOpacity={0.75}
+                      onPress={() => navigation.navigate('UserProfile', { userId: originalPost.author.id })}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                      accessibilityLabel={`Open @${originalPost.author.username}, creator of this track`}
+                    >
+                      <GradientBorder borderRadius={999} />
+                      <Icon name="repost" size={13} color={COLORS.purpleNeon} />
+                      <Text style={cardStyles.sourceTagLabel}>from</Text>
+                      <Text style={cardStyles.sourceTagName} numberOfLines={1}>
+                        @{originalPost.author.username}
+                      </Text>
+                    </TouchableOpacity>
+                    {/* Cumulative plays badge — top-LEFT, the tag has the right. */}
                     {playsTotal > 0 ? (
                       <View style={styles.playsBadge} pointerEvents="none">
                         <Text style={styles.playsBadgeText}>▶ {formatCount(playsTotal)}</Text>
                       </View>
                     ) : null}
+                    {/* What a story would actually keep. Video only — a story
+                        shows audio cover art whole, on a card, never cropped. Last, so
+                        it frames everything above. */}
+                    {mode === 'story' && media.kind === 'video' && videoAspect ? (
+                      <StoryCropFrame aspect={videoAspect} />
+                    ) : null}
                   </View>
-                ) : null}
-
+                ) : (
                 <View style={styles.trackInfo}>
                   <Text style={styles.trackTitle} numberOfLines={1}>
                     {originalPost.track.title}
@@ -573,6 +614,7 @@ export default function RepostScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
+                )}
               </View>
 
               {/* ── Clip range ── */}
@@ -837,7 +879,7 @@ const styles = StyleSheet.create({
   playsBadge: {
     position: 'absolute',
     top: 10,
-    right: 10,
+    left: 10,
     backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 999,
     paddingHorizontal: 10,
