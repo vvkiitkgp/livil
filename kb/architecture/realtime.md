@@ -24,7 +24,7 @@ wrong one produces bugs that only appear under multi-device or backgrounded cond
 | Mechanism | Carries | Delivery |
 |---|---|---|
 | **Postgres changes** | Row inserts/updates/deletes | Supabase Realtime, gated by row-level security |
-| **Broadcast** | Jam playback state | Supabase Realtime channels, **sent server-side** |
+| **Broadcast** | Jam playback state, typing signals | Supabase Realtime channels, **sent server-side** |
 | **Presence** | Who is in a Jam Room right now | Supabase Realtime presence |
 | **Push (FCM + notifee)** | Out-of-app notifications | Firebase, fanned out by an edge function |
 
@@ -128,7 +128,9 @@ Two different things share the word:
   (`20260925010000_last_seen_is_ops_only`).
 
 **Whether someone has the app open is never indicated to other users** — a product rule, not
-an omission. The chat indicator is "listening now" only (below). `list_my_conversations`
+an omission. The chat indicator is "listening now" only (below). The one exception is the
+typing indicator: it tells the people in a chat that someone is typing to them, as they do it,
+and nobody else. `list_my_conversations`
 still returns a column named `other_user_online`, but since `20260925000000_listening_now`
 it means "listening now"; it is kept only for builds already on the Play Store.
 
@@ -159,6 +161,54 @@ friend's **Listen** opens.
   DEFINER `list_my_conversations`.
 
 A **listen session** is this row. It is distinct from presence.
+
+---
+
+## Typing indicator
+
+Shown in the chat list (`typing…`, or `Riya is typing…` in a group) and as three dots under the
+newest message. Migration `20261120000000`, one-to-one chats and groups up to 50.
+
+- **Send:** `useTypingSignal` (`src/utils/chatTyping.ts`) follows keystrokes: a signal on the
+  first key, one every 3 s while keys keep coming, and one stop after 5 s without a key, or at
+  once when the box is emptied, the message sent, the chat left or covered, or the app put in the
+  background. Owner's rule (2026-11-08): a draft sitting in the box is not typing, so a pause
+  costs nothing and a forgotten draft never reads as "typing…". `sendTyping` runs one call at a
+  time, newest wins, so "stopped" cannot land before "typing".
+- **Who hears it:** `send_typing` (definer) requires membership and
+  `can_write_to_conversation`, skips anyone blocked either way, then calls `realtime.send` once
+  per other member, on that member's own topic.
+- **Receive:** one channel per signed-in person, `typing:<their id>`, opened by
+  `ChatTypingListener` above the navigator. One topic per recipient because the chat list needs
+  every chat at once.
+- **Private, unlike the jam's topic.** User ids are public, so a public topic would let anyone
+  watch who writes to whom. The `typing_own_topic_select` policy on `realtime.messages` lets you
+  join only your own topic. There is no insert policy, so a client cannot send on it directly.
+- **Expiry:** the receiving phone clears a person 7 s after their last signal. That is only for a
+  sender who vanishes (app killed, no network), never the normal end of typing, which is an
+  explicit stop.
+- **Redraws:** the store is keyed per chat and a repeat signal notifies nobody. `RowPreview` and
+  `TypingBubble` read it themselves, so a signal redraws one line, never a list. Keep it that way:
+  `MessageRow`'s memo exists because re-rendering every bubble held the JS thread for seconds.
+- **The channel cannot follow the realtime epoch's usual rule.** The server addresses this exact
+  topic, so it cannot change per connection. Reusing a topic has two traps in realtime-js: a channel
+  still leaving drops whatever is listed under that topic when it closes (`_remove` matches by
+  topic), and after the iOS gate's `disconnect()` the dead channel stays listed. So
+  `listenForTyping` waits for the old leave, then removes any leftover from
+  `supabase.realtime.channels` before joining. Pinned against the real library in
+  `src/services/__tests__/chatTyping.test.ts`; re-check it on any realtime-js upgrade.
+- **Not stored as chat data, but not nothing:** `realtime.send` writes a row to
+  `realtime.messages` (who, which chat, never the text), which Supabase clears by itself. A signal
+  therefore costs a small database write per recipient, hence the group cap and a server-side
+  limit (`typing_signal_limits`: one per second per person, "typing" and "stopped" apart), since a
+  client can call the function directly and skip the app's 3 s.
+- **A message beats a signal:** a person's message arriving clears them on the chat and the chat
+  list at once, so a stop that was dropped or is still on its way never leaves dots up.
+
+The seen time is not realtime's concern beyond the existing `conv-read` subscription:
+`conversation_members.read_receipt_at` is set by a trigger, only when the reader's `last_read_at`
+passes a new message from the other person. `last_read_at` itself moves on every chat open, so it
+must not be used as "when they saw it". The same trigger caps `last_read_at` at the server's clock.
 
 ---
 

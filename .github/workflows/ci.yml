@@ -232,6 +232,13 @@ jobs:
             language sql immutable as $$ select string_to_array(name, '/') $$;
           create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true)
             returns void language sql as $$ select $$;
+          -- Private channels are checked against this table's policies (20261120000000).
+          -- Same columns the realtime server uses; RLS on, as on production.
+          create table if not exists realtime.messages (id uuid default gen_random_uuid(), topic text,
+            extension text, payload jsonb, event text, private boolean, inserted_at timestamp default now());
+          alter table realtime.messages enable row level security;
+          create or replace function realtime.topic() returns text
+            language sql stable as $$ select nullif(current_setting('realtime.topic', true), '')::text $$;
           do $$ begin
             if not exists (select 1 from pg_roles where rolname='authenticated') then
               create role authenticated;
@@ -526,6 +533,16 @@ jobs:
         run: |
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/chat-delivered-receipts.test.sql
+
+      # Chat seen time + typing (20261120000000): the seen time moves only on reading something
+      # new, and nobody can set it; a typing signal reaches only the other members, each on a
+      # private topic only they can join, and no client can send on it.
+      - name: Chat seen time and typing tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/chat-seen-typing.test.sql
 
       # Chat delete (20261119010000): delete-for-everyone by the sender only, ERASING the
       # words; the chat-list line never keeps them (v1 and v2); delete-for-me, clear chat and
@@ -1121,6 +1138,9 @@ jobs:
           create table if not exists storage.objects (id uuid default gen_random_uuid() primary key, bucket_id text, name text, owner uuid, created_at timestamptz default now());
           create or replace function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
           create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true) returns void language sql as $$ select $$;
+          create table if not exists realtime.messages (id uuid default gen_random_uuid(), topic text, extension text, payload jsonb, event text, private boolean, inserted_at timestamp default now());
+          alter table realtime.messages enable row level security;
+          create or replace function realtime.topic() returns text language sql stable as $$ select nullif(current_setting('realtime.topic', true), '')::text $$;
           do $$ begin
             if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
             if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;

@@ -2,6 +2,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react';
@@ -27,7 +28,7 @@ import {
   KeyboardGestureArea,
   KeyboardController,
 } from 'react-native-keyboard-controller';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../navigation/types';
@@ -69,7 +70,10 @@ import { takeBlurSnapshot } from '../../services/blurSnapshot';
 import ReactionEmojiSheet from '../../components/ReactionEmojiSheet';
 import type { MenuAnchor } from '../../utils/messageMenuLayout';
 import DetailActionSheet, { type DetailAction } from '../../components/DetailActionSheet';
-import { chatReceipts, type ReceiptStatus } from '../../utils/chatReceipts';
+import { chatReceipts, seenLabel, type ReceiptStatus } from '../../utils/chatReceipts';
+import { clearPersonTyping, useTypingSignal } from '../../utils/chatTyping';
+import { sendTyping } from '../../services/chatTyping';
+import TypingBubble, { TYPING_SLOT_STYLE } from '../../components/TypingBubble';
 import NowPlayingPill from '../../components/NowPlayingPill';
 import { useListeningNow } from '../../hooks/useListeningNow';
 import {
@@ -244,8 +248,7 @@ function sameSavers(a: Record<string, ChatMediaSaver[]>, b: Record<string, ChatM
   });
 }
 
-const RECEIPT_LABEL: Record<ReceiptStatus, string> = {
-  seen: 'Seen',
+const RECEIPT_LABEL: Record<Exclude<ReceiptStatus, 'seen'>, string> = {
   delivered: 'Delivered',
   sent: 'Sent',
   sending: 'Sending…',
@@ -705,10 +708,23 @@ type MessageRowProps = {
   isHighlighted: boolean;
   /** A DM's Sending / Sent / Delivered / Seen, on the one message each applies to (utils/chatReceipts.ts). */
   readStatus: ReceiptStatus | null;
+  /** The time for "Seen 2m ago". Only on the row that says Seen, so a new time redraws only that row. */
+  seenAt: string | null;
   mediaSavers: ChatMediaSaver[] | undefined;
   mediaLoading: boolean;
   actions: RowActions;
 };
+
+/** "Seen 2m ago". Keeps itself current, so the minute's tick redraws this line and not the row. */
+function SeenTime({ at }: { at: string | null }) {
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (!at) { return; }
+    const timer = setInterval(tick, 60_000);
+    return () => clearInterval(timer);
+  }, [at]);
+  return <Text style={styles.readStatus}>{seenLabel(at)}</Text>;
+}
 
 /**
  * One chat row: time separator, swipe-to-see-time, the bubble, the read status. Memoised,
@@ -728,6 +744,7 @@ const MessageRow = React.memo(function ChatRow({
   repliedTo,
   isHighlighted,
   readStatus,
+  seenAt,
   mediaSavers,
   mediaLoading,
   actions,
@@ -772,7 +789,9 @@ const MessageRow = React.memo(function ChatRow({
             onCopyLink={actions.onCopyLink}
           />
         </View>
-        {readStatus ? (
+        {readStatus === 'seen' ? (
+          <SeenTime at={seenAt} />
+        ) : readStatus ? (
           <Text style={styles.readStatus}>
             {RECEIPT_LABEL[readStatus]}
           </Text>
@@ -799,6 +818,7 @@ function sameRow(a: MessageRowProps, b: MessageRowProps): boolean {
     && a.conversationTitle === b.conversationTitle
     && a.isHighlighted === b.isHighlighted
     && a.readStatus === b.readStatus
+    && a.seenAt === b.seenAt
     && a.mediaSavers === b.mediaSavers
     && a.mediaLoading === b.mediaLoading
     && a.actions === b.actions
@@ -1015,6 +1035,22 @@ export default function ConversationScreen() {
   // migration is not applied, and the receipts then fall back to today's "Delivered".
   const [otherReadAt, setOtherReadAt] = useState<string | null>(null);
   const [otherDeliveredAt, setOtherDeliveredAt] = useState<string | null>(null);
+  // When they last read something new, for "Seen 2m ago". Not otherReadAt: that moves every
+  // time they reopen the chat (20261120000000).
+  const [otherSeenAt, setOtherSeenAt] = useState<string | null>(null);
+
+  // Tells the people in this chat I am typing while I actually am: the dots follow my keys and go
+  // a few seconds after I pause, even with text left in the box (owner, 2026-11-08). Not the song
+  // or GIF search that shares the box.
+  const chatOnScreen = useIsFocused();
+  const sendTypingHere = useCallback(
+    (typing: boolean) => sendTyping(conversationId, typing),
+    [conversationId],
+  );
+  const typedHere = useTypingSignal(
+    chatOnScreen && !songMode && !gifMode && text.trim().length > 0,
+    sendTypingHere,
+  );
 
   // The originals of replies that quote a message above the loaded pages, fetched by id so
   // the quote shows it. For the quote only: they never join `messages` (the list keeps its
@@ -1252,6 +1288,7 @@ export default function ConversationScreen() {
       if (!cancelled && row) {
         setOtherReadAt(row.lastReadAt);
         setOtherDeliveredAt(row.lastDeliveredAt);
+        setOtherSeenAt(row.seenAt);
       }
     })();
     console.log('[realtime] conv-read subscribing', { conversationId });
@@ -1265,12 +1302,13 @@ export default function ConversationScreen() {
           table: 'conversation_members',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: { new: { user_id?: string; last_read_at?: string | null; last_delivered_at?: string | null } }) => {
+        (payload: { new: { user_id?: string; last_read_at?: string | null; last_delivered_at?: string | null; read_receipt_at?: string | null } }) => {
           const row = payload.new;
           if (!row || !row.user_id || row.user_id === myId) { return; }
           if (row.last_read_at) {
             console.log('[realtime] conv-read got other last_read_at', row.last_read_at);
             setOtherReadAt(row.last_read_at);
+            setOtherSeenAt(row.read_receipt_at ?? row.last_read_at);
           }
           if (row.last_delivered_at) { setOtherDeliveredAt(row.last_delivered_at); }
         },
@@ -1292,6 +1330,7 @@ export default function ConversationScreen() {
       conversationId,
       msg => {
         console.log(`[realtime] ConversationScreen onMessage id=${msg.id} sender=${msg.senderId}`);
+        if (msg.senderId) { clearPersonTyping(conversationId, msg.senderId); }
         setMessages(prev => {
           // Defensive: skip if already in list (e.g. own optimistic message that
           // already has the real DB id, or duplicate from a re-subscribe burst).
@@ -2265,13 +2304,14 @@ export default function ConversationScreen() {
           repliedTo={item.replyToId ? messagesById.get(item.replyToId) ?? null : null}
           isHighlighted={item.id === highlightedMessageId}
           readStatus={receipts.get(item.id) ?? null}
+          seenAt={receipts.get(item.id) === 'seen' ? otherSeenAt : null}
           mediaSavers={mediaSavers[item.id]}
           mediaLoading={openingMediaId === item.id}
           actions={rowActions}
         />
       );
     },
-    [myId, conversationId, title, messages, messagesById, highlightedMessageId, receipts, mediaSavers, openingMediaId, rowActions],
+    [myId, conversationId, title, messages, messagesById, highlightedMessageId, receipts, otherSeenAt, mediaSavers, openingMediaId, rowActions],
   );
 
   // The other person's now-playing, live. Only "playing music now" is ever shown —
@@ -2432,6 +2472,10 @@ export default function ConversationScreen() {
                 ]}
                 onEndReached={loadMore}
                 onEndReachedThreshold={0.2}
+                // An element, never a function (CLAUDE.md), and it reads the typing store
+                // itself, so someone typing does not redraw this list.
+                ListHeaderComponent={<TypingBubble conversationId={conversationId} />}
+                ListHeaderComponentStyle={TYPING_SLOT_STYLE}
                 ListEmptyComponent={
                   // Reachable since LIV-25: a DM now exists from the moment two people
                   // become friends, so the FIRST time either of them opens it there is
@@ -2607,13 +2651,16 @@ export default function ConversationScreen() {
                   nativeID="conversation-input"
                   value={songMode ? songQuery : gifMode ? gifQuery : text}
                   // A search is one line: a pasted newline becomes a space.
-                  onChangeText={t => (
-                    songMode
-                      ? setSongQuery(t.replace(/\n/g, ' ').slice(0, 100))
-                      : gifMode
-                        ? setGifQuery(t.replace(/\n/g, ' ').slice(0, MAX_GIF_QUERY_LENGTH))
-                        : setText(clampComposerInput(t))
-                  )}
+                  onChangeText={t => {
+                    if (songMode) {
+                      setSongQuery(t.replace(/\n/g, ' ').slice(0, 100));
+                    } else if (gifMode) {
+                      setGifQuery(t.replace(/\n/g, ' ').slice(0, MAX_GIF_QUERY_LENGTH));
+                    } else {
+                      setText(clampComposerInput(t));
+                      typedHere();
+                    }
+                  }}
                   placeholder={
                     songMode
                       ? (spotifySearchOn ? 'Search a song on Livil or Spotify…' : 'Search a song on Livil…')
@@ -2710,6 +2757,7 @@ export default function ConversationScreen() {
               repliedTo={reactionTarget.replyToId ? messagesById.get(reactionTarget.replyToId) ?? null : null}
               isHighlighted={false}
               readStatus={null}
+              seenAt={null}
               mediaSavers={mediaSavers[reactionTarget.id]}
               mediaLoading={false}
               actions={rowActions}

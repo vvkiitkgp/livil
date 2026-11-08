@@ -110,17 +110,44 @@ describe('getOtherMemberReadAt', () => {
       userId: 'riya',
       lastReadAt: '2026-11-02T10:03:00Z',
       lastDeliveredAt: '2026-11-02T10:05:00Z',
+      seenAt: '2026-11-02T10:03:00Z',
     });
   });
 
-  it('column not there yet: falls back to the old read, so "Seen" still works', async () => {
+  it('the seen time is the moment they read something new, not their last open', async () => {
+    mockFrom.mockReturnValueOnce(query({
+      data: { user_id: 'riya', last_read_at: '2026-11-08T09:00:00Z', read_receipt_at: '2026-11-03T10:00:00Z' },
+      error: null,
+    }));
+    await expect(getOtherMemberReadAt('c1')).resolves.toMatchObject({ seenAt: '2026-11-03T10:00:00Z' });
+  });
+
+  it('seen-time column not there yet: delivery still works, and the time is their last read', async () => {
     mockFrom
       .mockReturnValueOnce(query({ data: null, error: { code: '42703', message: 'column does not exist' } }))
+      .mockReturnValueOnce(query({
+        data: { user_id: 'riya', last_read_at: '2026-11-02T10:03:00Z', last_delivered_at: '2026-11-02T10:05:00Z' },
+        error: null,
+      }));
+    await expect(getOtherMemberReadAt('c1')).resolves.toEqual({
+      userId: 'riya',
+      lastReadAt: '2026-11-02T10:03:00Z',
+      lastDeliveredAt: '2026-11-02T10:05:00Z',
+      seenAt: '2026-11-02T10:03:00Z',
+    });
+  });
+
+  it('neither column there yet: falls back to the oldest read, so "Seen" still works', async () => {
+    const missing = { data: null, error: { code: '42703', message: 'column does not exist' } };
+    mockFrom
+      .mockReturnValueOnce(query(missing))
+      .mockReturnValueOnce(query(missing))
       .mockReturnValueOnce(query({ data: { user_id: 'riya', last_read_at: '2026-11-02T10:03:00Z' }, error: null }));
     await expect(getOtherMemberReadAt('c1')).resolves.toEqual({
       userId: 'riya',
       lastReadAt: '2026-11-02T10:03:00Z',
       lastDeliveredAt: null,
+      seenAt: '2026-11-02T10:03:00Z',
     });
   });
 });

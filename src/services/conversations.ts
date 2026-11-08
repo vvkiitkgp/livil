@@ -150,10 +150,12 @@ export async function createGroup(
 // stamps the chat compares its outgoing messages against for "Seen" and "Delivered"
 // (utils/chatReceipts.ts). lastDeliveredAt is null when unknown: their app never stamps it,
 // or the column is not there yet (20261119000000 not applied — then the old select is used,
-// so "Seen" keeps working). Null overall if there is no other member or the call fails.
+// so "Seen" keeps working). seenAt is the time for "Seen 2m ago": read_receipt_at, or their
+// last read while a chat has none yet (20261120000000). Null overall if there is no other
+// member or the call fails.
 export async function getOtherMemberReadAt(
   conversationId: string,
-): Promise<{ userId: string; lastReadAt: string | null; lastDeliveredAt: string | null } | null> {
+): Promise<{ userId: string; lastReadAt: string | null; lastDeliveredAt: string | null; seenAt: string | null } | null> {
   const { data: userData } = await supabase.auth.getUser();
   const me = userData?.user?.id;
   if (!me) { return null; }
@@ -165,12 +167,23 @@ export async function getOtherMemberReadAt(
     .neq('user_id', me)
     .limit(1)
     .maybeSingle();
-  let res = await read('user_id, last_read_at, last_delivered_at');
+  let res = await read('user_id, last_read_at, last_delivered_at, read_receipt_at');
+  if (res.error) { res = await read('user_id, last_read_at, last_delivered_at'); }
   if (res.error) { res = await read('user_id, last_read_at'); }
   const { data, error } = res;
   if (error || !data) { return null; }
-  const row = data as { user_id: string; last_read_at: string | null; last_delivered_at?: string | null };
-  return { userId: row.user_id, lastReadAt: row.last_read_at, lastDeliveredAt: row.last_delivered_at ?? null };
+  const row = data as {
+    user_id: string;
+    last_read_at: string | null;
+    last_delivered_at?: string | null;
+    read_receipt_at?: string | null;
+  };
+  return {
+    userId: row.user_id,
+    lastReadAt: row.last_read_at,
+    lastDeliveredAt: row.last_delivered_at ?? null,
+    seenAt: row.read_receipt_at ?? row.last_read_at,
+  };
 }
 
 // ── "Delivered": this app received a chat's messages (20261119000000) ─────────
@@ -180,7 +193,7 @@ let deliveredMissing = false;
 /** Newest time stamped per chat this session, so an unchanged chat is not stamped again. */
 const deliveredUpTo = new Map<string, number>();
 
-function isMissingFunction(error: { code?: string } | null | undefined): boolean {
+export function isMissingFunction(error: { code?: string } | null | undefined): boolean {
   return error?.code === 'PGRST202' || error?.code === '42883';
 }
 

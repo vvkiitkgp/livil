@@ -30,6 +30,7 @@ import {
 import { messageCache } from '../../services/messageCache';
 import { requestBadgeRefresh } from '../../services/appBadge';
 import { useRealtimeEpoch } from '../../utils/realtimeEpoch';
+import { clearPersonTyping, typingLabel, useChatTyping } from '../../utils/chatTyping';
 import { useRelationships } from '../../contexts/RelationshipContext';
 import { FriendRequestsBanner, ActivityBanner } from '../../components/InboxBanner';
 import NotificationNudge from '../../components/NotificationNudge';
@@ -78,6 +79,26 @@ function initials(name: string | null, username: string | null): string {
   const parts = n.split(/\s+/).filter(Boolean);
   if (parts.length === 1) { return parts[0]!.slice(0, 2).toUpperCase(); }
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
+}
+
+/** The line under a chat's name. Reads the typing store itself, so a signal redraws only this. */
+function RowPreview({ item }: { item: ConversationSummary }) {
+  const typing = useChatTyping(item.id);
+  if (typing.length > 0) {
+    return (
+      <Text style={styles.previewTyping} numberOfLines={1}>
+        {typingLabel(typing, item.kind === 'group')}
+      </Text>
+    );
+  }
+  return (
+    <Text
+      style={[styles.previewText, item.unreadCount > 0 && styles.previewUnread]}
+      numberOfLines={1}
+    >
+      {item.lastMessagePreview ?? 'No messages yet'}
+    </Text>
+  );
 }
 
 function ConversationRow({
@@ -158,12 +179,7 @@ function ConversationRow({
           {isDm && item.otherUserId ? <AddBadge userId={item.otherUserId} size="sm" /> : null}
           <Text style={styles.timeText}>{formatTime(item.lastMessageAt)}</Text>
         </View>
-        <Text
-          style={[styles.previewText, item.unreadCount > 0 && styles.previewUnread]}
-          numberOfLines={1}
-        >
-          {item.lastMessagePreview ?? 'No messages yet'}
-        </Text>
+        <RowPreview item={item} />
       </View>
 
       {item.unreadCount > 0 && (
@@ -325,6 +341,7 @@ export default function InboxScreen() {
           // System lines never reach the list, except that a cleared chat's line is empty now.
           if (row.kind === 'system' && !row.metadata?.chat_cleared) { return; }
           if (row.sender_id && row.sender_id === myIdRef.current) { return; }
+          if (row.sender_id && row.conversation_id) { clearPersonTyping(row.conversation_id, row.sender_id); }
           console.log('[realtime] inbox got messages INSERT', { conv: row.conversation_id, sender: row.sender_id });
           void refreshFromNetwork();
         },
@@ -665,6 +682,7 @@ const styles = StyleSheet.create({
   timeText: { color: COLORS.textSecondary, fontSize: 12 },
   previewText: { color: COLORS.textSecondary, fontSize: 13 },
   previewUnread: { color: COLORS.white, fontWeight: '600' },
+  previewTyping: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '600' },
   badge: {
     backgroundColor: COLORS.purple,
     borderRadius: 10,
