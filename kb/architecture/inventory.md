@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-601 TypeScript file(s) under `src/`, 117,778 lines.
+602 TypeScript file(s) under `src/`, 118,006 lines.
 
 ## Size hotspots
 
@@ -42,9 +42,9 @@ reading alone (Constitution P28).
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
+| `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/components/GlobalAudioPlayer.tsx` | 694 |
 | `src/screens/studio/StudioScreen.tsx` | 673 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -191,7 +191,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-190 file(s), 36,742 lines.
+191 file(s), 36,970 lines.
 
 | File | Lines |
 |---|---:|
@@ -200,7 +200,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 1083 |
-| `src/components/GlobalAudioPlayer.tsx` | 694 |
+| `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 483 |
 | `src/components/SpotifyPostCard.tsx` | 482 |
@@ -263,6 +263,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/SettingsProfileCard.tsx` | 189 |
 | `src/components/PlaylistCoverPicker.tsx` | 186 |
 | `src/components/__tests__/ChatSongPicker.test.tsx` | 186 |
+| `src/components/__tests__/GlobalAudioPlayer.echo.test.tsx` | 181 |
 | `src/components/__tests__/GlobalAudioPlayer.iosEnd.test.tsx` | 180 |
 | `src/components/ProfileTabBar.tsx` | 179 |
 | `src/components/SwipeReplyRow.tsx` | 175 |

@@ -21,6 +21,13 @@ import type { RepeatMode } from '../contexts/PlaybackContext';
 const MAX_FAILS_IN_A_ROW = 2;
 /** Seconds of playhead movement that count as "something played" and reset the count. */
 const PLAYED_RESETS_FAILS_SEC = 1;
+/**
+ * How long a native play/pause report can be the late echo of a `paused` value WE sent —
+ * see handlePlaybackStateChanged. The phone's reports reached JS up to ~0.7 s late on a busy
+ * profile screen (2026-11-08); 1.5 s covers that with room to spare, and only costs a real
+ * lock-screen press that lands within 1.5 s of our own opposite command.
+ */
+const ECHO_WINDOW_MS = 1500;
 
 const AUDIO_BUFFER_CONFIG = {
   minBufferMs: 15_000,
@@ -92,6 +99,22 @@ export default function GlobalAudioPlayer() {
   // Mirror of `paused` readable synchronously inside native-event callbacks
   // (no stale closure) so we can tell an in-app pause from a lock-screen pause.
   const pausedRef = useRef(paused);
+  // Every `paused` value handed to the native player (our intent OR the video-frame gate),
+  // and when — so handlePlaybackStateChanged can tell the late echo of our own command from
+  // a real lock-screen / Control Center press.
+  const sentPausedRef = useRef<Array<{ paused: boolean; at: number }>>([]);
+  const noteSentPaused = useCallback((value: boolean) => {
+    const now = Date.now();
+    sentPausedRef.current = [
+      ...sentPausedRef.current.filter(c => now - c.at < ECHO_WINDOW_MS),
+      { paused: value, at: now },
+    ];
+  }, []);
+  /** True when the native player reporting `nativePaused` may just be echoing us. */
+  const isOwnEcho = useCallback((nativePaused: boolean) => {
+    const now = Date.now();
+    return sentPausedRef.current.some(c => c.paused === nativePaused && now - c.at < ECHO_WINDOW_MS);
+  }, []);
   pausedRef.current = paused;
   // True while the player is buffering/loading. onPlaybackStateChanged reports
   // isPlaying=false during buffering — which must NOT be mistaken for a
@@ -402,6 +425,19 @@ export default function GlobalAudioPlayer() {
         // down imperatively instead of just ignoring the report.
         if (bufferingRef.current || Date.now() < loadGuardUntilRef.current || videoGateRef.current) {
           console.log('[LIVIL][GAP] stray native PLAY during load → force pause');
+          noteSentPaused(true);
+          videoRef.current?.pause();
+          return;
+        }
+        // The native report arrives late, and may be the echo of a PLAY we sent a moment
+        // ago (the video-frame gate releasing, our own resume) rather than a lock-screen
+        // press. Acting on echoes is how an iPhone video got stuck flipping play / pause
+        // forever (2026-11-08): the gate's pause and release left two reports in flight,
+        // each read as the user's press, each answered with a command whose own report
+        // came back the other way — a ring that never settled (and finally tripped
+        // "Maximum update depth exceeded"). Hold the native player to our intent instead.
+        if (isOwnEcho(false)) {
+          console.log('[LIVIL][GAP] native PLAY is our own echo → keep paused');
           videoRef.current?.pause();
           return;
         }
@@ -420,13 +456,18 @@ export default function GlobalAudioPlayer() {
         if (bufferingRef.current || Date.now() < loadGuardUntilRef.current || videoGateRef.current) {
           return;
         }
+        // The late echo of a PAUSE we sent (see the PLAY branch) — not the user's.
+        if (isOwnEcho(true)) {
+          console.log('[LIVIL][GAP] native PAUSE is our own echo → ignored');
+          return;
+        }
         console.log('[LIVIL][GAP] lock-screen PAUSE → sync');
         setPaused(true);
         reportPaused(mine);
         setListeningTrack(null);
       }
     },
-    [resumePlay, reportPaused],
+    [resumePlay, reportPaused, isOwnEcho, noteSentPaused],
   );
 
   const handleEnd = useCallback(() => {
@@ -605,6 +646,12 @@ export default function GlobalAudioPlayer() {
     return p > 0.05 ? Math.round(p * 1000) : undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowPlaying?.postId]);
+
+  // Record each `paused` value the native player is handed (see sentPausedRef). The same
+  // expression as the <Video>'s `paused` prop below; here, before the early returns, to keep
+  // hook order stable.
+  const nativePaused = paused || (nowPlaying?.mediaKind === 'video' && videoFrameBuffering);
+  useEffect(() => { noteSentPaused(nativePaused); }, [nativePaused, noteSentPaused]);
 
   // Don't render when the jam PlaybackEngine drives audio, or nothing is playing.
   if (engineDriving || !nowPlaying) {
