@@ -126,7 +126,13 @@ links reposted to the feed. Spotify's platform, as of October 2026, decides most
   repost's like count on the bottom-right of Spotify's artwork, in the profile grid only. The
   owner chose this after being told it departs from the rule. If Spotify objects, moving the
   count back under the artwork is a one-line app change, but it reaches users only with a store
-  release. The feed card (`SpotifyPostCard`) still draws nothing on the artwork.
+  release.
+- **A second exception (owner, 2026-11-08):** the feed card (`SpotifyPostCard`) draws the
+  song's title and artist over the bottom of the artwork, on a dark fade, so a post's words cost
+  the card no height, and the "↻ from Spotify" tag (repost icon, logo, on its own dark, slightly
+  see-through pill) in the top-right corner. Chosen
+  after being told it departs from the rule; nothing else (no play glyph, no like burst) is
+  drawn there. Undoing it is the same one-file app change as above.
 
 ## Rejected alternatives
 

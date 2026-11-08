@@ -4,7 +4,9 @@ import { COLORS } from '../theme/colors';
 import CoverFallback from './CoverFallback';
 import { GradientBorder } from './GradientBorder';
 import { Icon } from './Icon';
-import { ACTION_ICON_SIZE, SHARE_ICON_SIZE, postCardStyles as styles } from './PostCard';
+import { ACTION_ICON_SIZE, IndieVibesTag, SHARE_ICON_SIZE, SONG_SCRIM_H, postCardStyles as styles } from './PostCard';
+import Scrim from './Scrim';
+import ProgressiveImage from './ProgressiveImage';
 
 export type UploadPreviewAuthor = {
   name: string;
@@ -48,6 +50,7 @@ export default function UploadPreviewCard({
   durationSec,
   playing = false,
   mediaSlot,
+  madeWithLivil = false,
   onOpen,
 }: {
   author: UploadPreviewAuthor;
@@ -61,6 +64,8 @@ export default function UploadPreviewCard({
   playing?: boolean;
   /** Replaces the static picture — the song's own player, which handles its own taps. */
   mediaSlot?: React.ReactNode;
+  /** A mix from the Editor: the post will carry the "Made with Livil" pill, so the preview does. */
+  madeWithLivil?: boolean;
   /** The play button (and the picture, when there is no `mediaSlot`). */
   onOpen: () => void;
 }) {
@@ -96,46 +101,61 @@ export default function UploadPreviewCard({
         </View>
       </View>
 
-      <View style={styles.titleBlock}>
-        <Text style={styles.trackTitle} numberOfLines={2}>{title.trim() || 'Untitled'}</Text>
-      </View>
       {caption.trim() ? (
         <Text style={styles.caption} numberOfLines={4}>{caption.trim()}</Text>
       ) : null}
 
-      {mediaSlot ? (
-        <View style={styles.mediaWrap}>{mediaSlot}</View>
-      ) : (
+      {/* PostCard's tap area: the full-size cover with the song's name and artist over its
+          bottom edge. A song's own player (`mediaSlot`) takes the cover's place and keeps its
+          own taps — the words over it take none. */}
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={onOpen}
-        style={styles.mediaWrap}
+        style={styles.tapArea}
         accessibilityRole="button"
         accessibilityLabel={playing ? 'Pause the preview' : 'Play the preview'}
       >
-        {imageUri ? (
-          <Image
-            source={{ uri: imageUri }}
-            style={isVideo ? styles.videoThumb : styles.audioCover}
-            resizeMode="cover"
-          />
-        ) : (
-          <CoverFallback />
-        )}
-        {isVideo ? (
-          <View style={styles.videoBadge} pointerEvents="none">
-            <Text style={styles.videoBadgeText}>VIDEO</Text>
-          </View>
-        ) : null}
-        {playing ? null : (
-          <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
-            <View style={styles.videoCenterGlyph}>
-              <Icon name="play" size={24} color="#fff" />
+        <View style={styles.coverBox}>
+          {mediaSlot ?? (
+            <>
+              <ProgressiveImage
+                source={{ uri: imageUri }}
+                style={styles.cover}
+                resizeMode="cover"
+                placeholder={<CoverFallback />}
+              />
+              {isVideo ? (
+                <View style={styles.videoBadge} pointerEvents="none">
+                  <Text style={styles.videoBadgeText}>VIDEO</Text>
+                </View>
+              ) : null}
+              {playing ? null : (
+                <View pointerEvents="none" style={styles.videoCenterGlyphWrap}>
+                  <View style={styles.videoCenterGlyph}>
+                    <Icon name="play" size={24} color="#fff" />
+                  </View>
+                </View>
+              )}
+            </>
+          )}
+          <IndieVibesTag />
+          <Scrim edge="bottom" height={SONG_SCRIM_H} peakOpacity={0.85} />
+          <View style={styles.songOverlay} pointerEvents="none">
+            <View style={styles.songInfo}>
+              <Text style={styles.trackTitle} numberOfLines={2}>{title.trim() || 'Untitled'}</Text>
+              <View style={styles.artistRow}>
+                <Text style={styles.artist} numberOfLines={1}>{author.name}</Text>
+                {madeWithLivil ? (
+                  <View style={styles.madeWith}>
+                    <Icon name="ai" size={11} color={COLORS.purpleLight} />
+                    <Text style={styles.madeWithText}>Made with Livil</Text>
+                  </View>
+                ) : null}
+              </View>
             </View>
           </View>
-        )}
+        </View>
       </TouchableOpacity>
-      )}
 
       <View style={styles.durationBlock}>
         <Text style={styles.seekTime}>{formatTime(durationSec)}</Text>

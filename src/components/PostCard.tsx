@@ -32,12 +32,15 @@ import ShareRepostSheet from './ShareRepostSheet';
 import { DoubleTapLike } from './DoubleTapLike';
 import { LikeHeart } from './LikeHeart';
 import { usePlayFullScreen } from '../hooks/usePlayFullScreen';
+import { useOpenProfile } from '../hooks/useOpenProfile';
 import { canSendRepostInChat, canSharePost, toShareablePost } from '../services/share';
 import { GradientBorder } from './GradientBorder';
+import { Logo } from './Logo';
 import ProgressiveImage from './ProgressiveImage';
 import UsernameBadges from './UsernameBadges';
 import SpotifyPostCard from './SpotifyPostCard';
 import MentionText from './MentionText';
+import Scrim from './Scrim';
 
 export type PostCardProps = {
   post: FeedPost;
@@ -121,6 +124,9 @@ export const SHARE_ICON_SIZE = 22;
 
 const CREDIT_FACES_SHOWN = 4;
 
+/** The fade under the song's name on the cover: about half a phone-width cover. */
+export const SONG_SCRIM_H = 170;
+
 /** "with Ana" / "with Ana and 2 others" — a name is worth more than a face count. */
 function creditsSummary(credits: FeedPost['credits']): string {
   const first = credits[0]?.name?.trim();
@@ -186,9 +192,8 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
     }
   }, [post.id, playback, showToast, onDeleted]);
 
-  const openAuthor = useCallback((authorId: string) => {
-    navigation.navigate('UserProfile', { userId: authorId });
-  }, [navigation]);
+  // Pushes, so it also works from inside someone's profile (useOpenProfile).
+  const openAuthor = useOpenProfile();
 
   // Position + duration for the read-only seek bar. Polled from the global
   // playback refs while this post is the current track (see effect below).
@@ -485,6 +490,14 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
 
   const headerAuthor = post.author;
   const isRepost = post.kind === 'repost' && post.originalAuthor != null;
+  // The song's artist: whoever uploaded it, which on a repost is the original author.
+  const songArtist = isRepost ? post.originalAuthor! : post.author;
+  const songArtistName = songArtist.displayName ?? songArtist.username;
+  // What a screen reader says for the tap area. The likes chip sits inside it now, and a
+  // labelled button hides its children, so the chip's count is spoken here.
+  const songLabel = `${post.track.title} by ${songArtistName}${
+    originalLikes > 0 ? `. Original upload has ${originalLikes} ${originalLikes === 1 ? 'like' : 'likes'}` : ''
+  }`;
   // No repost item in ⋯ on your own repost: it would only repost the same song again. The
   // id comes from RelationshipContext (resolved once for the app) rather than `viewerId`,
   // which each card fetches after it draws.
@@ -500,6 +513,70 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
   const isOrphanedRepost = post.kind === 'repost' && post.originalPostId === null;
 
   const initials = useMemo(() => avatarInitials(headerAuthor), [headerAuthor]);
+
+  // The song's name, artist and "Made with Livil", over the bottom of the cover on a fade
+  // so white words read on any artwork (owner, 2026-11-08): the words cost the card no
+  // height, so the cover stays full size. Takes no touches — a tap on it is a tap on the
+  // cover. A repost's original-likes chip rides its right end, where it sat on the cover.
+  const renderSongOverlay = () => (
+    <>
+      <Scrim edge="bottom" height={SONG_SCRIM_H} peakOpacity={0.85} />
+      <View style={styles.songOverlay} pointerEvents="none">
+        <View style={styles.songInfo}>
+          <Text style={styles.trackTitle} numberOfLines={2}>
+            {post.track.title}
+          </Text>
+          <View style={styles.artistRow}>
+            <Text style={styles.artist} numberOfLines={1}>
+              {songArtistName}
+            </Text>
+            {post.track.madeWithLivil ? (
+              <View style={styles.madeWith} accessibilityLabel="Made with Livil: recorded and produced in the Livil Editor">
+                <Icon name="ai" size={11} color={COLORS.purpleLight} />
+                <Text style={styles.madeWithText}>Made with Livil</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+        {/* A repost's cover carries the UPLOAD's likes; the heart below counts the repost's
+            own (owner, 2026-11-07). */}
+        {originalLikes > 0 ? (
+          <View style={styles.originalLikesChip}>
+            <Icon name="heart" size={15} color={COLORS.white} weight="fill" />
+            <Text style={styles.originalLikesText}>{formatCount(originalLikes)}</Text>
+          </View>
+        ) : null}
+      </View>
+    </>
+  );
+
+  // Where the song comes from, on the cover's top-right corner — one tag per kind of post, as
+  // a Spotify repost has its "↻ from Spotify" (owner, 2026-11-08):
+  //  - a REPOST: "↻ from @creator". It used to sit in a banner atop the card. It stays a
+  //    button, because it is the card's one visible way to the original author: a touchable
+  //    inside the cover's own, so a tap on it opens the profile and never plays. A screen
+  //    reader hears the cover as one button, so its way there is ⋯ → Go to artist.
+  //  - an UPLOAD: "Indie Vibes" with Livil's mark — an original on Livil, the songs the Home
+  //    tab of that name lists. Just a label: a tap on it is a tap on the cover.
+  const renderSourceTag = () => (isRepost ? (
+    <TouchableOpacity
+      style={styles.sourceTag}
+      activeOpacity={0.75}
+      onPress={() => openAuthor(post.originalAuthor!.id)}
+      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      accessibilityLabel={`Open @${post.originalAuthor!.username}, creator of this track`}
+    >
+      <GradientBorder borderRadius={999} />
+      {/* "↻ from @name", like a Spotify repost's "↻ from Spotify" (owner, 2026-11-08). */}
+      <Icon name="repost" size={13} color={COLORS.purpleNeon} />
+      <Text style={styles.sourceTagLabel}>from</Text>
+      <Text style={styles.sourceTagName} numberOfLines={1}>
+        @{post.originalAuthor!.username}
+      </Text>
+    </TouchableOpacity>
+  ) : post.kind === 'upload' ? (
+    <IndieVibesTag />
+  ) : null);
 
   if (isOrphanedRepost) {
     return (
@@ -595,7 +672,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
           onClose={() => setContextMenuVisible(false)}
           onPlayNext={handlePlayNext}
           onAddToQueue={handleAddToQueue}
-          onGoToArtist={(uid) => navigation.navigate('UserProfile', { userId: uid })}
+          onGoToArtist={openAuthor}
           viewerId={viewerId}
           postId={post.id}
           postAuthorId={post.author.id}
@@ -637,38 +714,8 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
 
   return (
     <View style={styles.card}>
-      {/* Repost banner sits above everything when this post is a repost. */}
-      {isRepost ? (
-        <View style={styles.repostBanner}>
-          <Icon name="repost" size={13} color={COLORS.purpleLight} />
-          <Text style={styles.repostBannerText} numberOfLines={1}>
-            <Text
-              style={styles.repostBannerName}
-              onPress={() => openAuthor(headerAuthor.id)}
-            >
-              {headerAuthor.displayName ?? headerAuthor.username}
-            </Text>
-            {' reposted'}
-          </Text>
-          {/* The CREATOR pill names who the repost came from — it used to sit in
-              the title block while the banner spelled out "reposted from @x",
-              saying the same thing twice. It stays tappable because dropping the
-              "from @x" link would otherwise leave no way to reach the original
-              author from this card. */}
-          <TouchableOpacity
-            style={styles.creatorTag}
-            activeOpacity={0.75}
-            onPress={() => openAuthor(post.originalAuthor!.id)}
-            accessibilityLabel={`Open @${post.originalAuthor!.username}, creator of this track`}
-          >
-            <Text style={styles.creatorTagLabel}>CREATOR</Text>
-            <Text style={styles.creatorTagName} numberOfLines={1}>
-              @{post.originalAuthor!.username}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-
+      {/* No "X reposted" band on a repost (owner, 2026-11-08): the header already names who
+          posted it, and the Creator tag on the cover says it is someone else's song. */}
       {/* Header: avatar, then name + Add pill on the first line and @handle · age
           on the second. The age sits with the handle rather than the name because
           the name line also carries the Add pill, and the two together crowded out
@@ -721,18 +768,6 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
         </TouchableOpacity>
       </View>
 
-      {/* Track title + caption */}
-      <View style={styles.titleBlock}>
-        <Text style={styles.trackTitle} numberOfLines={2}>
-          {post.track.title}
-        </Text>
-      </View>
-      {post.track.madeWithLivil ? (
-        <View style={styles.madeWith} accessibilityLabel="Made with Livil: recorded and produced in the Livil Editor">
-          <Icon name="ai" size={11} color={COLORS.purpleLight} />
-          <Text style={styles.madeWithText}>Made with Livil</Text>
-        </View>
-      ) : null}
       {post.caption ? (
         // Up to 2,000 characters: 4 lines, then "… See more" opens the rest in place.
         // Outside the artwork's DoubleTapLike, so a tap here never plays or likes.
@@ -775,24 +810,25 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
         </TouchableOpacity>
       ) : null}
 
-      {/* Media */}
-      <View style={styles.mediaWrap}>
-        {isVideo ? (
-          // Video posts: static thumbnail only. The real <Video> lives in
-          // FullScreenPlayer (single-player model) so feed playback and FS
-          // playback can never desync. Tap anywhere on the thumbnail (or
-          // the centered play glyph) → opens FS. The bottom action-row
-          // play button (rendered below) plays audio in place without
-          // opening FS. Double tap → like (DoubleTapLike).
-          <DoubleTapLike
-            onSingleTap={handleVideoOpenFs}
-            onDoubleTap={handleDoubleTapLike}
-            style={styles.mediaWrap}
-            accessibilityLabel="Open full-screen player"
-          >
+      {/* The tap area: the full-width square cover, with the song's name, artist and "Made
+          with Livil" over its bottom edge (renderSongOverlay). */}
+      {isVideo ? (
+        // Video posts: static thumbnail only. The real <Video> lives in
+        // FullScreenPlayer (single-player model) so feed playback and FS
+        // playback can never desync. Tap anywhere in the area (or the
+        // centered play glyph) → opens FS. The bottom action-row play
+        // button (rendered below) plays audio in place without opening
+        // FS. Double tap → like (DoubleTapLike).
+        <DoubleTapLike
+          onSingleTap={handleVideoOpenFs}
+          onDoubleTap={handleDoubleTapLike}
+          style={styles.tapArea}
+          accessibilityLabel={`Open in the full-screen player: ${songLabel}`}
+        >
+          <View style={styles.coverBox}>
             <ProgressiveImage
               source={{ uri: post.track.thumbnailUrl }}
-              style={styles.videoThumb}
+              style={styles.cover}
               resizeMode="cover"
               placeholder={
                 <View style={styles.videoThumbIconWrap}>
@@ -813,21 +849,25 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
                 </View>
               </View>
             ) : null}
-          </DoubleTapLike>
-        ) : (post.track.audioUrl || post.track.coverArtUrl) ? (
-          // Audio posts: cover art + a center play glyph, mirroring the video
-          // thumbnail. Tap toggles play/pause through the GLOBAL audio player —
-          // there is no inline <Video> here, so playback is fully decoupled
-          // from this card being on screen. Double tap → like (DoubleTapLike).
-          <DoubleTapLike
-            onSingleTap={handleAudioTogglePlay}
-            onDoubleTap={handleDoubleTapLike}
-            style={styles.mediaWrap}
-            accessibilityLabel={isThisActive ? 'Pause' : 'Play'}
-          >
+            {renderSongOverlay()}
+            {renderSourceTag()}
+          </View>
+        </DoubleTapLike>
+      ) : (post.track.audioUrl || post.track.coverArtUrl) ? (
+        // Audio posts: cover art + a center play glyph, mirroring the video
+        // thumbnail. Tap toggles play/pause through the GLOBAL audio player —
+        // there is no inline <Video> here, so playback is fully decoupled
+        // from this card being on screen. Double tap → like (DoubleTapLike).
+        <DoubleTapLike
+          onSingleTap={handleAudioTogglePlay}
+          onDoubleTap={handleDoubleTapLike}
+          style={styles.tapArea}
+          accessibilityLabel={`${isThisActive ? 'Pause' : 'Play'} ${songLabel}`}
+        >
+          <View style={styles.coverBox}>
             <ProgressiveImage
               source={{ uri: post.track.coverArtUrl }}
-              style={styles.audioCover}
+              style={styles.cover}
               resizeMode="cover"
               placeholder={<CoverFallback />}
             />
@@ -842,26 +882,19 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
                 </View>
               </View>
             ) : null}
-          </DoubleTapLike>
-        ) : (
-          <View style={[styles.mediaWrap, styles.missingMedia]}>
+            {renderSongOverlay()}
+            {renderSourceTag()}
+          </View>
+        </DoubleTapLike>
+      ) : (
+        <View style={styles.tapArea}>
+          <View style={[styles.coverBox, styles.missingMedia]}>
             <Text style={styles.missingMediaText}>Media unavailable</Text>
+            {renderSongOverlay()}
+            {renderSourceTag()}
           </View>
-        )}
-        {/* A repost's cover carries the UPLOAD's likes; the heart below counts the repost's own
-            (owner, 2026-11-07). Read-only: it takes no touches, so a tap on it is a tap on the cover. */}
-        {originalLikes > 0 ? (
-          <View
-            style={styles.originalLikesChip}
-            pointerEvents="none"
-            accessible
-            accessibilityLabel={`Original upload has ${originalLikes} ${originalLikes === 1 ? 'like' : 'likes'}`}
-          >
-            <Icon name="heart" size={15} color={COLORS.white} weight="fill" />
-            <Text style={styles.originalLikesText}>{formatCount(originalLikes)}</Text>
-          </View>
-        ) : null}
-      </View>
+        </View>
+      )}
 
       {/* The wave is here to show WHERE A CLIP SITS inside the track it came from —
           the whole song in white, with a purple box around the reposted slice. An
@@ -1014,9 +1047,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
         onClose={() => setContextMenuVisible(false)}
         onPlayNext={handlePlayNext}
         onAddToQueue={handleAddToQueue}
-        onGoToArtist={(userId) => {
-          navigation.navigate('UserProfile', { userId });
-        }}
+        onGoToArtist={openAuthor}
         viewerId={viewerId}
         postId={post.id}
         postAuthorId={post.author.id}
@@ -1100,43 +1131,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     marginHorizontal: 16,
   },
-  /**
-   * A full-bleed header band across the top of a repost card.
-   *
-   * `COLORS.card` (#1A1A2E), one step up the neutral ramp from the card's own #12121C —
-   * NOT the primary. Filling this with purple was tried and dominated the card it was
-   * only meant to label, so the marking is neutral and confined to this band: a repost
-   * card is otherwise the same shape and colour as every other card in the feed.
-   *
-   * Negative margins cancel the card's 14dp padding so the band spans its full inner
-   * width, and the padding puts the content back. The top corners are rounded HERE
-   * rather than by putting `overflow: 'hidden'` on the card: the card also hosts
-   * GradientBorder (the play button), whose glow is drawn inward and
-   * would be clipped by it — the trap the design notes name explicitly. 19 is the card's
-   * 20dp radius less its 1dp border, the radius of the padding box the band sits in.
-   */
-  repostBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.card,
-    marginTop: -14,
-    marginHorizontal: -14,
-    marginBottom: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopLeftRadius: 19,
-    borderTopRightRadius: 19,
-  },
-  repostBannerText: {
-    color: COLORS.textMuted,
-    fontSize: 12,
-    flex: 1,
-  },
-  repostBannerName: {
-    color: COLORS.textSecondary,
-    fontWeight: '700',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1215,13 +1209,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // A small indicator, so outlined (no-fill rule): purple border, light label.
+  // A small indicator, so outlined (no-fill rule): purple border, light label. Never
+  // shrinks: a long artist name truncates instead.
   madeWith: {
-    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 6,
+    flexShrink: 0,
     paddingHorizontal: 8,
     height: 22,
     borderRadius: 11,
@@ -1229,42 +1223,83 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purple,
   },
   madeWithText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700', letterSpacing: 0.2 },
-  titleBlock: {
+  tapArea: {
+    width: '100%',
     marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
   },
+  // Full width, square, rounded. Clips so the fade under the song's name follows the
+  // rounded corners — nothing in here is a GradientBorder host.
+  coverBox: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: COLORS.card,
+  },
+  cover: {
+    width: '100%',
+    height: '100%',
+  },
+  songOverlay: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+  },
+  songInfo: { flex: 1, minWidth: 0 },
+  // A soft shadow under the words as well as the fade: a bright patch of artwork right
+  // behind them must not wash them out.
+  // Sized up for the cover (owner, 2026-11-08): the words are the cover's caption now.
   trackTitle: {
     color: COLORS.white,
-    fontSize: 17,
+    fontSize: 21,
+    lineHeight: 25,
     fontWeight: '800',
-    letterSpacing: -0.3,
-    flex: 1,
+    letterSpacing: -0.4,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
   },
-  creatorTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    backgroundColor: COLORS.infoBg,
-    borderWidth: 1,
-    borderColor: COLORS.infoBorder,
+  artistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  artist: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 15,
+    fontWeight: '600',
+    flexShrink: 1,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+  },
+  // On the cover's top-right corner, in the primary button's look (owner, 2026-11-08): the
+  // purple GradientBorder glow, with a purpleNeon icon or mark. Its ground is the Spotify tag's dark,
+  // slightly see-through fill, so the outline and words hold up on bright artwork. No
+  // `overflow: 'hidden'` here — it is a GradientBorder host.
+  sourceTag: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    maxWidth: '60%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    maxWidth: '60%',
+    // The Spotify tag's size (owner, 2026-11-08): its 21dp logo + 4dp padding + 1dp border
+    // each way is 31 tall, and the name is set about as large as Spotify's wordmark.
+    height: 31,
+    paddingHorizontal: 11,
+    borderRadius: 999,
+    backgroundColor: 'rgba(10,10,15,0.6)',
   },
-  creatorTagLabel: {
-    color: COLORS.info,
-    fontSize: 9,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-  },
-  creatorTagName: {
-    color: COLORS.info,
-    fontSize: 11,
-    fontWeight: '700',
-  },
+  // White words, as on the Spotify tag (owner, 2026-11-08); the purple is the outline and icon.
+  sourceTagLabel: { color: COLORS.white, fontSize: 11, fontWeight: '700' },
+  sourceTagName: { color: COLORS.white, fontSize: 14, fontWeight: '800', flexShrink: 1 },
   creditsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 },
   creditFace: {},
   // Overlapped, so a row of credits reads as one group rather than a queue of avatars.
@@ -1272,20 +1307,14 @@ const styles = StyleSheet.create({
   creditsMore: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', marginLeft: 2 },
   creditsLabel: { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
   // White, like the rest of the card's text — grey read as secondary (owner, 2026-10-19).
+  // The first thing under the header now that the song's name sits on the cover.
   caption: {
     color: COLORS.white,
     fontSize: 14,
     lineHeight: 20,
-    marginTop: 8,
-  },
-  mediaWrap: {
     marginTop: 12,
   },
   missingMedia: {
-    aspectRatio: 1,
-    width: '100%',
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1293,23 +1322,9 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
     fontSize: 13,
   },
-  videoThumb: {
-    aspectRatio: 1,
-    width: '100%',
-    borderRadius: 18,
-    backgroundColor: COLORS.card,
-  },
-  audioCover: {
-    aspectRatio: 1,
-    width: '100%',
-    borderRadius: 18,
-    backgroundColor: COLORS.card,
-  },
-  // The same chip as PostGridCard's likesChip / likesText.
+  // The same chip as PostGridCard's likesChip / likesText, at the end of the song's words.
   originalLikesChip: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
@@ -1319,10 +1334,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.62)',
   },
   originalLikesText: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
+  // Top-LEFT: the top-right corner is a repost's Creator tag.
   videoBadge: {
     position: 'absolute',
     top: 10,
-    right: 10,
+    left: 10,
     backgroundColor: 'rgba(0,0,0,0.65)',
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1488,6 +1504,21 @@ const styles = StyleSheet.create({
  * to the real card shows up in the preview, so the two cannot drift apart.
  */
 export const postCardStyles = styles;
+
+/**
+ * An upload's source tag: "Indie Vibes" beside Livil's mark (white, like the words; owner,
+ * 2026-11-08), in the source tag's pill.
+ * Exported for UploadPreviewCard, so the upload screen's preview wears the tag the post will.
+ */
+export function IndieVibesTag() {
+  return (
+    <View style={styles.sourceTag} pointerEvents="none">
+      <GradientBorder borderRadius={999} />
+      <Logo size={22} color={COLORS.white} />
+      <Text style={styles.sourceTagName} numberOfLines={1}>Indie Vibes</Text>
+    </View>
+  );
+}
 
 function PostCardSwitch(props: PostCardProps) {
   return props.post.spotifyTrackId ? <SpotifyPostCard {...props} /> : <PostCard {...props} />;
