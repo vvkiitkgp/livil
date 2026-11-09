@@ -12,9 +12,9 @@ import { CHORD_LOOPS, guitarStyleName, isGuitar, SYNTH_NAMES, SYNTH_STEPS, synth
 import { BpmStepper } from './BpmStepper';
 import { ClipTrack, peaksOf } from './ClipTrack';
 import { formatClock } from './RecordPanel';
-import { barSeconds, clipEnd, projectLength, songRange, type Project, type VoiceLane } from './studioEngine';
+import { barSeconds, projectLength, songRange, type Project, type VoiceLane } from './studioEngine';
 import { SongTrim } from './SongTrim';
-import type { SongRange } from './timeline';
+import { roomPast, type SongRange } from './timeline';
 import { StudioSlider } from './StudioSlider';
 import { SynthStrip } from './SynthSheet';
 import { TimeRuler } from './TimeRuler';
@@ -38,7 +38,8 @@ type Props = {
   cleaning: { laneId: string; progress: number } | null;
   onBpm: (bpm: number) => void;
   /** The whole-song trim changed (null = no trim). */
-  onRange: (range: SongRange | null) => void;
+  /** The song trim (null = all of it) and the length its end was dragged out to, if any. */
+  onRange: (range: SongRange | null, length: number | undefined) => void;
   onDrumVolume: (v: number) => void;
   /** The whole song's volume. */
   onMasterVolume: (v: number) => void;
@@ -104,9 +105,18 @@ export function EditorPanel(p: Props) {
   const bar = barSeconds(project.bpm);
   const len = projectLength(project);
   const range = songRange(project);
-  const liveView = Math.max(8, Math.ceil((project.voices.reduce((m, v) => Math.max(m, clipEnd(v)), 0) + bar) / bar) * bar);
+  // The clips' own length in whole bars: the song's end can be pulled out past it, not in.
+  const natural = project.voices.length ? projectLength({ ...project, length: undefined }) : 0;
+  // Room past the song's end, so its end can always be grabbed and pulled out.
+  const liveView = Math.max(8, len + roomPast(len, bar));
   // The timeline only ever widens: trimming a clip shorter must not zoom every row under your finger.
   const widest = useRef(0);
+  // …except when the song itself was resized on purpose: a voice removed, or its end dragged.
+  const sized = useRef({ voices: project.voices.length, length: project.length });
+  if (sized.current.voices !== project.voices.length || sized.current.length !== project.length) {
+    sized.current = { voices: project.voices.length, length: project.length };
+    widest.current = 0;
+  }
   widest.current = Math.max(widest.current, liveView);
   const viewLen = frozenView ?? widest.current;
   const [scrub, setScrub] = useState<number | null>(null);
@@ -128,7 +138,7 @@ export function EditorPanel(p: Props) {
         </View>
         <TouchableOpacity
           onPress={p.onSave}
-          disabled={p.saving || (!p.unsaved && !!p.draftTitle) || project.voices.length === 0}
+          disabled={p.saving || !p.unsaved}
           style={styles.headerSide}
           accessibilityRole="button"
           accessibilityLabel="Save to drafts on this phone"
@@ -136,7 +146,7 @@ export function EditorPanel(p: Props) {
         >
           {p.saving
             ? <ActivityIndicator size="small" color={COLORS.purpleLight} />
-            : <Text style={[styles.save, (!p.unsaved && !!p.draftTitle) || project.voices.length === 0 ? styles.saveOff : null]}>Save</Text>}
+            : <Text style={[styles.save, !p.unsaved ? styles.saveOff : null]}>Save</Text>}
         </TouchableOpacity>
       </View>
 
@@ -149,7 +159,7 @@ export function EditorPanel(p: Props) {
           <LevelReadout db={p.level} />
         </View>
         <View style={{ flex: 1 }} />
-        <BpmStepper bpm={project.bpm} onBpm={p.onBpm} />
+        <BpmStepper bpm={project.bpm} onBpm={p.onBpm} settle />
       </View>
 
       <View style={styles.master}>
@@ -171,9 +181,12 @@ export function EditorPanel(p: Props) {
         <SongTrim
           viewLen={viewLen}
           full={len}
+          natural={natural}
+          length={project.length}
           range={range}
           bpm={project.bpm}
           onGesture={active => setFrozenView(active ? viewLen : null)}
+          onView={setFrozenView}
           onCommit={p.onRange}
         />
       </View>

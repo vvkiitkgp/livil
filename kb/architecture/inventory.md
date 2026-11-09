@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-604 TypeScript file(s) under `src/`, 120,384 lines.
+606 TypeScript file(s) under `src/`, 120,706 lines.
 
 ## Size hotspots
 
@@ -34,7 +34,7 @@ reading alone (Constitution P28).
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1321 |
+| `src/screens/studio/studioEngine.ts` | 1324 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -45,7 +45,7 @@ reading alone (Constitution P28).
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 677 |
+| `src/screens/studio/StudioScreen.tsx` | 685 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
@@ -109,7 +109,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,767 lines.
+77 file(s), 36,089 lines.
 
 | File | Lines |
 |---|---:|
@@ -119,26 +119,26 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1321 |
+| `src/screens/studio/studioEngine.ts` | 1324 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 677 |
+| `src/screens/studio/StudioScreen.tsx` | 685 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
-| `src/screens/studio/RecordPanel.tsx` | 571 |
+| `src/screens/studio/RecordPanel.tsx` | 580 |
 | `src/screens/studio/SynthSheet.tsx` | 483 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
-| `src/screens/studio/EditorPanel.tsx` | 387 |
+| `src/screens/studio/EditorPanel.tsx` | 400 |
 | `src/screens/studio/TunePanel.tsx` | 382 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 359 |
@@ -168,7 +168,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/PostDetailScreen.tsx` | 208 |
 | `src/screens/main/BlockedAccountsScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 202 |
-| `src/screens/studio/ClipTrack.tsx` | 188 |
+| `src/screens/studio/ClipTrack.tsx` | 201 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
@@ -176,18 +176,20 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/AddToLivilScreen.tsx` | 163 |
 | `src/screens/studio/renderMix.ts` | 157 |
 | `src/screens/studio/EffectsSheet.tsx` | 151 |
+| `src/screens/studio/BpmStepper.tsx` | 133 |
+| `src/screens/studio/SongTrim.tsx` | 116 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |
 | `src/screens/studio/StudioLoading.tsx` | 99 |
-| `src/screens/studio/BpmStepper.tsx` | 92 |
-| `src/screens/studio/SongTrim.tsx` | 91 |
 | `src/screens/studio/finishTake.ts` | 83 |
+| `src/screens/studio/__tests__/timeline.test.ts` | 81 |
+| `src/screens/studio/__tests__/BpmStepper.test.tsx` | 80 |
 | `src/screens/studio/StudioSlider.tsx` | 78 |
+| `src/screens/studio/timeline.ts` | 74 |
 | `src/screens/studio/TimeRuler.tsx` | 73 |
 | `src/screens/studio/DraftsScreen.tsx` | 62 |
 | `src/screens/studio/__tests__/engineToggle.test.ts` | 49 |
 | `src/screens/studio/MagicButton.tsx` | 39 |
-| `src/screens/studio/timeline.ts` | 25 |
 
 ## Components
 
