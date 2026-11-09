@@ -10,8 +10,8 @@ import type { RootStackParamList } from '../../navigation/types';
 import { COLORS } from '../../theme/colors';
 
 /**
- * "Drafts" from + Post: every draft on this phone, each with Edit. Upload drafts only in the
- * store app, while the Editor is developer-only (see `useMyDrafts`).
+ * "Drafts" from + Post: every draft on this phone (uploads and Editor songs), each with Edit
+ * (see `useMyDrafts`).
  */
 export default function DraftsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
