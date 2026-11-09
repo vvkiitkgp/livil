@@ -107,6 +107,9 @@ export function parseDraftFile(text: string): DraftFile | null {
   }
   // Settings added after the first drafts: an old draft opens exactly as it sounded.
   for (const v of voices) if (!(typeof v.level === 'number' && v.level > 0 && v.level <= 8)) v.level = 1;
+  // Reverb was removed from the Editor (2026-11-09): a draft saved with it on has no switch
+  // left to turn it off, so it opens off. Its room and level stay as they were saved.
+  for (const v of voices) if (v.fx?.reverb?.on) v.fx.reverb.on = false;
   // Synth parts are pure settings (no audio files): keep what this build can play, and
   // drafts saved before instruments existed simply have none.
   d.project.synths = sanitizeSynths(d.project.synths);

@@ -237,9 +237,9 @@ export function EditorPanel(p: Props) {
                 onPress={() => p.onOpenFx(v)}
                 style={[styles.fxBtn, anyFx(v.fx) && styles.fxBtnOn]}
                 accessibilityRole="button"
-                accessibilityLabel={`Effects for ${v.name}${anyFx(v.fx) ? ', some on' : ''}`}
+                accessibilityLabel={`Pitch for ${v.name}${anyFx(v.fx) ? ', changed' : ''}`}
               >
-                <Text style={[styles.fxText, anyFx(v.fx) && { color: COLORS.purpleNeon }]}>FX</Text>
+                <Text style={[styles.fxText, anyFx(v.fx) && { color: COLORS.purpleNeon }]}>PITCH</Text>
               </Pressable>
             </View>
             <ClipTrack

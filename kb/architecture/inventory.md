@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-606 TypeScript file(s) under `src/`, 120,706 lines.
+606 TypeScript file(s) under `src/`, 120,680 lines.
 
 ## Size hotspots
 
@@ -109,7 +109,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,089 lines.
+77 file(s), 36,052 lines.
 
 | File | Lines |
 |---|---:|
@@ -156,7 +156,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
 | `src/screens/main/RecentlyPlayedScreen.tsx` | 261 |
 | `src/screens/main/DeleteAccountScreen.tsx` | 259 |
-| `src/screens/studio/draftFormat.ts` | 235 |
+| `src/screens/studio/draftFormat.ts` | 238 |
 | `src/screens/main/CreateAlbumScreen.tsx` | 234 |
 | `src/screens/main/FollowingScreen.tsx` | 231 |
 | `src/screens/auth/ChooseUsernameScreen.tsx` | 227 |
@@ -175,11 +175,11 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/AddToLivilScreen.tsx` | 163 |
 | `src/screens/studio/renderMix.ts` | 157 |
-| `src/screens/studio/EffectsSheet.tsx` | 151 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/SongTrim.tsx` | 116 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |
+| `src/screens/studio/EffectsSheet.tsx` | 111 |
 | `src/screens/studio/StudioLoading.tsx` | 99 |
 | `src/screens/studio/finishTake.ts` | 83 |
 | `src/screens/studio/__tests__/timeline.test.ts` | 81 |
@@ -597,7 +597,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-131 file(s), 13,895 lines.
+131 file(s), 13,906 lines.
 
 | File | Lines |
 |---|---:|
@@ -619,9 +619,9 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/audioClean/clickRepair.ts` | 190 |
 | `src/utils/__tests__/shareLinks.test.ts` | 186 |
 | `src/utils/chatLinks.ts` | 184 |
+| `src/utils/__tests__/drafts.test.ts` | 174 |
 | `src/utils/audioClean/clickRemover.ts` | 173 |
 | `src/utils/chatTyping.ts` | 171 |
-| `src/utils/__tests__/drafts.test.ts` | 168 |
 | `src/utils/__tests__/groupStoriesByAuthor.test.ts` | 167 |
 | `src/utils/__tests__/chatLinks.test.ts` | 165 |
 | `src/utils/emojiData.ts` | 162 |
@@ -637,11 +637,11 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/authorDisplay.test.ts` | 135 |
 | `src/utils/chatMedia.ts` | 134 |
 | `src/utils/drums.ts` | 134 |
+| `src/utils/audioFx/effects.ts` | 128 |
 | `src/utils/audioFx/level.ts` | 128 |
 | `src/utils/groupStoriesByAuthor.ts` | 125 |
 | `src/utils/__tests__/audioClean.test.ts` | 124 |
 | `src/utils/__tests__/groupFaces.test.ts` | 124 |
-| `src/utils/audioFx/effects.ts` | 123 |
 | `src/utils/nowPlayingMetadata.ts` | 123 |
 | `src/utils/magicTune/index.ts` | 121 |
 | `src/utils/audioClean/denoise.ts` | 117 |

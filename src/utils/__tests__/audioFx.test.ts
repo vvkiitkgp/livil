@@ -41,10 +41,10 @@ describe('reverb', () => {
   });
 });
 
-it('a new voice starts as sung, with no reverb', () => {
+it('a new voice starts as sung; only a pitch change counts as changed', () => {
   expect(anyFx(DEFAULT_FX)).toBe(false);
+  expect(DEFAULT_FX.reverb.on).toBe(false);
   expect(anyFx({ ...DEFAULT_FX, pitch: 2 })).toBe(true);
-  expect(anyFx({ ...DEFAULT_FX, reverb: { ...DEFAULT_FX.reverb, on: true } })).toBe(true);
 });
 
 describe('limiter', () => {

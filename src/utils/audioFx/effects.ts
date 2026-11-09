@@ -4,6 +4,10 @@
  *
  * Echo and flanger were built and dropped (2026-10-31, owner: "not working properly, keep
  * only reverb"). Both need feedback, and react-native-audio-api REJECTS graph cycles.
+ *
+ * Reverb left the Editor too (2026-11-09, owner: "it's not working"). Its settings and the
+ * engine's support stay, so drafts keep their shape, but nothing can switch it on: the
+ * sheet shows Pitch only, and a draft saved with it on opens with it off (parseDraftFile).
  */
 
 export type ReverbFx = {
@@ -27,7 +31,8 @@ export const DEFAULT_FX: VoiceFx = {
 /** The pitch slider's reach, in semitones each way (an octave). */
 export const PITCH_RANGE = 12;
 
-export const anyFx = (fx: VoiceFx) => fx.reverb.on || fx.pitch !== 0;
+/** Is this voice changed from how it was sung? Lights the voice's PITCH button. */
+export const anyFx = (fx: VoiceFx) => fx.pitch !== 0;
 
 /** "+3 semitones", "−1 semitone", "As sung". */
 export function pitchLabel(semitones: number): string {
