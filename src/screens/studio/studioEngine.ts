@@ -40,13 +40,17 @@ import type { Key } from '../../utils/magicTune';
 import { DRUM_IDS, isPrivateOutput, STEPS, synthClick, synthDrum, type DrumId, type DrumPattern } from '../../utils/drums';
 import {
   degreeToMidi,
-  KEYBOARD_DEGREES,
+  guitarStroke,
+  isGuitar,
+  keyboardDegrees,
   renderSynth,
   SYNTH_STEPS,
   synthHits,
+  type Stroke,
   type SynthHit,
   type SynthPart,
   type SynthSound,
+  type Touch,
 } from '../../utils/synth';
 
 export type Take = {
@@ -120,8 +124,19 @@ type LaneFx = {
   reverb: { conv: ConvolverNode; wet: GainNode; linked: boolean; builtSize: number; ready: boolean } | null;
 };
 type LaneNodes = { lane: GainNode; raw: GainNode; tuned: GainNode; fx: LaneFx | null };
-/** A playing source; `env` is its edge-fade gain, when it has one. */
-type Scheduled = { src: AudioBufferSourceNode; end: number; env?: GainNode };
+/**
+ * A playing source; `env` is its own gain (an edge fade, a guitar stroke's loudness), when it
+ * has one. A synth part's source also says whose it is and when it starts.
+ */
+type Scheduled = { src: AudioBufferSourceNode; end: number; env?: GainNode; part?: string; at?: number };
+/** A guitar stroke its keyboard has sounding, or about to: `stop` fades it out, `cancel` drops it unheard. */
+type LiveStroke = { at: number; stop: (fade: number) => void; cancel: () => void };
+/**
+ * A guitar chord held on the keyboard. `anchor` is the loop step (with its fraction) the song
+ * was at, at context time `t0` — the grid its strokes fall on; `last`, the time of the latest
+ * step already dealt with.
+ */
+type Hold = { part: SynthPart; degree: number; anchor: number; t0: number; last: number };
 
 /**
  * Let go of a finished source's audio now. Setting a buffer makes the library COPY it into the
@@ -157,8 +172,20 @@ export const STUDIO_SAMPLE_RATE = 48000;
 const LOOKAHEAD_SEC = 0.15;
 /** The longest a held keyboard key sounds. */
 const PRESS_SEC = 4;
-const synthKey = (sound: SynthSound, midis: number[], seconds: number, tag = '') =>
-  `${tag}${sound}|${midis.join(',')}|${seconds.toFixed(4)}`;
+/** A held guitar chord is strummed only this far ahead, so letting go stops the hand at once. */
+const HOLD_AHEAD_SEC = 0.06;
+/** …but its coming strokes are synthesised this many 16ths ahead (see tickHolds). */
+const RENDER_AHEAD_STEPS = 6;
+/**
+ * How long a stroke strummed from the keyboard is rendered to ring, seconds: nothing says when
+ * the next one will damp it, so it gets its full ring (guitarStroke's `ring`), up to this — a
+ * full or bass stroke, and the lighter ones. These bound the keyboard's memory: at most four
+ * strokes a chord, ~1.6 MB together at 48 kHz.
+ */
+const RING_SEC = { long: 2.5, short: 1.25 };
+const liveSeconds = (k: Stroke, stepSec: number) => Math.min(k.ring * stepSec, k.ring > 8 ? RING_SEC.long : RING_SEC.short);
+const synthKey = (sound: SynthSound, midis: number[], seconds: number, touch: Touch = {}, tag = '') =>
+  `${tag}${sound}|${midis.join(',')}|${seconds.toFixed(4)}|${touch.gap || ''}${touch.mute ? 'x' : ''}${touch.cut ? 'c' : ''}${touch.hard !== undefined && touch.hard < 1 ? `h${touch.hard}` : ''}`;
 const TICK_MS = 25;
 
 export const clipLength = (v: Pick<VoiceLane, 'trimStart' | 'trimEnd'>) => Math.max(0.05, v.trimEnd - v.trimStart);
@@ -205,6 +232,11 @@ export class StudioEngine {
   private synthHitMap = new Map<string, SynthHit[][]>();
   /** Rendered synth notes/chords by sound+notes+length — only what the project still plays. */
   private synthBufs = new Map<string, AudioBuffer>();
+  /** Per guitar part, the strokes its keyboard has sounding (or sent for the next moment). */
+  private ringing = new Map<string, LiveStroke[]>();
+  /** Per guitar part, the chord held on its keyboard: strummed in the part's pattern until let go. */
+  private holds = new Map<string, Hold>();
+  private holdTimer: ReturnType<typeof setInterval> | null = null;
   private project: Project;
   private sources: Scheduled[] = [];
   /**
@@ -339,6 +371,8 @@ export class StudioEngine {
 
   async dispose(): Promise<void> {
     this.stop();
+    this.holds.clear();
+    this.endHolds();
     this.previewBufs.clear();
     this.buffers.clear();
     this.synthBufs.clear();
@@ -447,21 +481,36 @@ export class StudioEngine {
       const hits = synthHits(part);
       this.synthHitMap.set(part.id, hits);
       // Render now, not in the scheduler: a pad chord takes a few ms to synthesise.
-      for (const step of hits) for (const h of step) needed.add(this.synthBuffer(part.sound, h.midis, h.len * stepSec).key);
+      for (const step of hits) for (const h of step) needed.add(this.synthBuffer(part.sound, h.midis, h.len * stepSec, h).key);
     }
     // Keyboard notes are rendered on first press; keep only the ones a part can still play.
     for (const part of p.synths) {
-      for (const d of KEYBOARD_DEGREES) needed.add(synthKey(part.sound, [degreeToMidi(part.key, part.sound, d)], PRESS_SEC, 'tap|'));
+      for (const d of keyboardDegrees(part.sound)) {
+        if (!isGuitar(part.sound)) {
+          needed.add(synthKey(part.sound, [degreeToMidi(part.key, part.sound, d)], PRESS_SEC, {}, 'tap|'));
+          continue;
+        }
+        // A guitar key sounds the strokes of the part's pattern, and the one a new chord starts on.
+        for (let pos = 0; pos < 16; pos++) {
+          for (const fresh of [false, true]) {
+            const k = guitarStroke(part, d, pos, fresh);
+            if (k) needed.add(synthKey(part.sound, k.midis, liveSeconds(k, stepSec), k));
+          }
+        }
+      }
     }
     for (const k of this.synthBufs.keys()) if (!needed.has(k)) this.synthBufs.delete(k);
   }
 
-  private synthBuffer(sound: SynthSound, midis: number[], seconds: number, tag = ''): { key: string; buf: AudioBuffer } {
-    const key = synthKey(sound, midis, seconds, tag);
+  private synthBuffer(sound: SynthSound, midis: number[], seconds: number, touch: Touch = {}, tag = ''): { key: string; buf: AudioBuffer } {
+    const key = synthKey(sound, midis, seconds, touch, tag);
     let buf = this.synthBufs.get(key);
     if (!buf) {
       const ctx = this.ctx!;
-      const data = renderSynth(sound, midis, seconds, ctx.sampleRate);
+      const t = Date.now();
+      const data = renderSynth(sound, midis, seconds, ctx.sampleRate, touch);
+      // Synthesis runs on the JS thread; a slow one is heard as a late note. Say so when it is.
+      if (Date.now() - t >= 30) console.log(`[LIVIL][SYNTH] ${sound} x${midis.length} ${(data.length / ctx.sampleRate).toFixed(2)}s took ${Date.now() - t} ms`);
       buf = ctx.createBuffer(1, data.length, ctx.sampleRate);
       buf.copyToChannel(data, 0);
       this.synthBufs.set(key, buf);
@@ -642,6 +691,7 @@ export class StudioEngine {
         if (this.metronome && step % 4 === 0) this.fireClick(step === 0, when);
         const sStep = (firstStep + this.stepCounter) % SYNTH_STEPS;
         for (const part of p.synths) {
+          if (this.holds.has(part.id)) continue; // its keyboard has the guitar: one guitar, one chord
           for (const h of this.synthHitMap.get(part.id)?.[sStep] ?? []) this.fireSynth(part, h, when, stepSec);
         }
       }
@@ -723,24 +773,41 @@ export class StudioEngine {
     const ctx = this.ctx;
     const g = this.synthGains.get(part.id);
     if (!ctx || !g) return;
-    const { buf } = this.synthBuffer(part.sound, hit.midis, hit.len * stepSec);
+    const { buf } = this.synthBuffer(part.sound, hit.midis, hit.len * stepSec, hit);
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(g);
-    src.start(when);
-    this.sources.push({ src, end: when + buf.duration });
+    // A guitar stroke has its own loudness, and lands a few ms off the grid, as a hand does.
+    let env: GainNode | undefined;
+    if (hit.gain !== undefined && hit.gain !== 1) {
+      env = ctx.createGain();
+      env.gain.value = hit.gain;
+      src.connect(env);
+      env.connect(g);
+    } else {
+      src.connect(g);
+    }
+    const at = Math.max(ctx.currentTime, when + (hit.shift ?? 0));
+    src.start(at);
+    this.sources.push({ src, end: at + buf.duration, env, part: part.id, at });
+    // The song's strumming takes the guitar back from a chord its keyboard left ringing.
+    if (part.sound === 'strum') this.dampLive(part.id, at, hit.mute ? 0.03 : 0.05);
   }
 
   /**
-   * A keyboard key held down: the note sounds until `release()` (up to PRESS_SEC), then
-   * fades out like a real let-go. Plays even when the song is stopped.
+   * A keyboard key held down. A note sounds until `release()` (up to PRESS_SEC), then fades
+   * out like a real let-go. A guitar key is a chord: it is strummed at once, then in the
+   * part's pattern for as long as it is held — on the song's beat while the song plays — and
+   * its last stroke rings on after the key is let go, as a strummed chord does, until the
+   * guitar's next stroke damps it. Plays even when the song is stopped.
    */
   async pressSynth(part: SynthPart, degree: number): Promise<{ release: () => void }> {
     const ctx = this.ctx;
     const none = { release: () => {} };
     if (!ctx || !this.master) return none;
     await ctx.resume();
-    const { buf } = this.synthBuffer(part.sound, [degreeToMidi(part.key, part.sound, degree)], PRESS_SEC, 'tap|');
+    if (this.ctx !== ctx) return none;
+    if (isGuitar(part.sound)) return this.holdChord(part, degree);
+    const { buf } = this.synthBuffer(part.sound, [degreeToMidi(part.key, part.sound, degree)], PRESS_SEC, {}, 'tap|');
     const g = ctx.createGain();
     g.gain.value = part.volume;
     g.connect(this.master);
@@ -763,6 +830,161 @@ export class StudioEngine {
         setTimeout(end, 400);
       },
     };
+  }
+
+  /** The loop step (a 16th; 0 = the song's start) the playhead is at, with its fraction. */
+  private stepNow(): number {
+    const stepSec = 60 / this.project.bpm / 4;
+    return Math.round(this.rangeStart / stepSec) + (this.position() - this.rangeStart) / stepSec;
+  }
+
+  /**
+   * The step of the 4-bar loop a guitar chord pressed now starts on: the nearest 8th, where a
+   * strumming hand's strokes fall. What the Editor records for it.
+   */
+  chordStep(): number {
+    return (((2 * Math.round(this.stepNow() / 2)) % SYNTH_STEPS) + SYNTH_STEPS) % SYNTH_STEPS;
+  }
+
+  private holdChord(part: SynthPart, degree: number): { release: () => void } {
+    const ctx = this.ctx!;
+    const now = ctx.currentTime;
+    const stepSec = 60 / this.project.bpm / 4;
+    // On the song's grid while it plays; with "beat 1 is now" while it doesn't.
+    const sNow = this.playing ? this.stepNow() : 0;
+    const start = 2 * Math.round(sNow / 2);
+    const hold: Hold = { part, degree, anchor: sNow, t0: now, last: now + (start - sNow) * stepSec };
+    // One guitar, one chord: this one takes over from the chord held before it, and from the
+    // song's own strokes for the part — those already sent for the next moment would land on it.
+    this.holds.set(part.id, hold);
+    for (const s of this.sources) {
+      if (s.part !== part.id || s.at === undefined) continue;
+      if (s.at > now) {
+        try { s.src.stop(); } catch { /* ended */ }
+        try { s.src.disconnect(); } catch { /* already */ }
+      } else if (s.env) {
+        // Sounding now: the new chord damps it, as the next stroke of the song would have.
+        s.env.gain.setValueAtTime(s.env.gain.value, now);
+        s.env.gain.linearRampToValueAtTime(0, now + 0.05);
+      }
+    }
+    for (const k of [...(this.ringing.get(part.id) ?? [])]) if (k.at > now) k.cancel();
+    const first = guitarStroke(part, degree, start, true);
+    if (first) this.strumLive(hold, first, now, true);
+    if (!this.holdTimer) this.holdTimer = setInterval(() => this.tickHolds(), TICK_MS);
+    this.tickHolds();
+    return {
+      release: () => {
+        if (this.holds.get(part.id) !== hold) return; // a newer chord has the guitar
+        this.holds.delete(part.id);
+        // The hand stops: strokes not sounding yet never will; the last one rings on.
+        const t = this.ctx?.currentTime ?? 0;
+        for (const k of [...(this.ringing.get(part.id) ?? [])]) if (k.at > t) k.cancel();
+        this.endHolds();
+      },
+    };
+  }
+
+  /** Strum the held guitar chords: every stroke of their patterns that falls in the next moment. */
+  private tickHolds(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.holds.size) { this.endHolds(); return; }
+    const now = ctx.currentTime;
+    const stepSec = 60 / this.project.bpm / 4;
+    for (const h of this.holds.values()) {
+      const sNow = this.playing ? this.stepNow() : h.anchor + (now - h.t0) / stepSec;
+      for (let k = Math.ceil(sNow - 1e-6); ; k++) {
+        const when = now + (k - sNow) * stepSec;
+        if (when >= now + HOLD_AHEAD_SEC) break;
+        if (when <= h.last + stepSec / 2) continue; // dealt with (or the step the chord started on)
+        h.last = when;
+        const stroke = guitarStroke(h.part, h.degree, k, false);
+        if (stroke) this.strumLive(h, stroke, Math.max(now, when + stroke.shift), false);
+      }
+      // Synthesise the strokes coming up before they are due — one a tick, the nearest first.
+      // Done as each fell, the first pass through a chord's pattern would land every new
+      // stroke late by however long it takes to make. (Once per stroke: they are kept.)
+      for (let k = Math.ceil(sNow - 1e-6); k < sNow + RENDER_AHEAD_STEPS; k++) {
+        const stroke = guitarStroke(h.part, h.degree, k, false);
+        if (!stroke || this.synthBufs.has(synthKey(h.part.sound, stroke.midis, liveSeconds(stroke, stepSec), stroke))) continue;
+        this.synthBuffer(h.part.sound, stroke.midis, liveSeconds(stroke, stepSec), stroke);
+        break;
+      }
+    }
+  }
+
+  private endHolds(): void {
+    if (this.holds.size || !this.holdTimer) return;
+    clearInterval(this.holdTimer);
+    this.holdTimer = null;
+  }
+
+  /**
+   * Sound one stroke of a held chord at `when`. Rendered to ring out (liveSeconds), because
+   * only the next stroke knows when this one ends: as that lands it fades this out — every
+   * string for a strum or a new chord (`fresh`); a picked string leaves its chord ringing.
+   * Its source copies the buffer, so it is freed as soon as it has faded or run out.
+   */
+  private strumLive(hold: Hold, k: Stroke, when: number, fresh: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master) return;
+    const { part } = hold;
+    const { buf } = this.synthBuffer(part.sound, k.midis, liveSeconds(k, 60 / this.project.bpm / 4), k);
+    const level = part.volume * k.gain;
+    const g = ctx.createGain();
+    g.gain.value = level;
+    g.connect(this.master);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(g);
+    src.start(when);
+    const list = this.ringing.get(part.id) ?? [];
+    this.ringing.set(part.id, list);
+    let done = false;
+    const end = () => {
+      free(src);
+      try { g.disconnect(); } catch { /* already */ }
+      const i = list.indexOf(me);
+      if (i >= 0) list.splice(i, 1);
+    };
+    const finish = (afterMs: number) => {
+      done = true;
+      clearTimeout(timer);
+      clearTimeout(damper);
+      setTimeout(end, afterMs);
+    };
+    const me: LiveStroke = {
+      at: when,
+      stop: fade => {
+        if (done) return;
+        const t = ctx.currentTime;
+        g.gain.setValueAtTime(level, t);
+        g.gain.linearRampToValueAtTime(0, t + fade);
+        try { src.stop(t + fade + 0.03); } catch { /* ended */ }
+        finish(400);
+      },
+      cancel: () => {
+        if (done) return;
+        try { src.stop(); } catch { /* ended */ }
+        finish(0);
+      },
+    };
+    const wait = Math.max(0, when - ctx.currentTime);
+    const damps = fresh || part.sound === 'strum';
+    const damper = setTimeout(() => {
+      if (!damps) return;
+      for (const o of [...list]) if (o !== me && o.at <= when) o.stop(k.mute ? 0.03 : 0.05);
+    }, wait * 1000);
+    const timer = setTimeout(() => { done = true; end(); }, (wait + buf.duration + 0.2) * 1000);
+    list.push(me);
+  }
+
+  /** Fade out what a guitar's keyboard left ringing, as a stroke of the song lands at `when`. */
+  private dampLive(partId: string, when: number, fade: number): void {
+    const ctx = this.ctx;
+    const list = this.ringing.get(partId);
+    if (!ctx || !list?.length) return;
+    setTimeout(() => { for (const o of [...list]) if (o.at <= when) o.stop(fade); }, Math.max(0, (when - ctx.currentTime) * 1000));
   }
 
   private fireClick(accent: boolean, when: number): void {

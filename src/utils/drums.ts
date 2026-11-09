@@ -12,7 +12,7 @@ export const STEPS = 16;
 export type DrumPattern = Record<DrumId, boolean[]>;
 
 /** Deterministic noise so a kit sounds the same every launch (and tests are stable). */
-function noise(seed: number): () => number {
+export function noise(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
     s = (s * 1664525 + 1013904223) >>> 0;
