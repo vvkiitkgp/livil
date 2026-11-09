@@ -34,7 +34,7 @@ import {
 } from '../../utils/audioFx/effects';
 import { Platform } from 'react-native';
 import { androidLikelyMic, toMics, type Mic, type RawDevice } from '../../utils/audioDevices';
-import { clampRange, type SongRange } from './timeline';
+import { clampRange, songLength, type SongRange } from './timeline';
 import { edgeRamp } from '../../utils/audioFx/level';
 import type { Key } from '../../utils/magicTune';
 import { DRUM_IDS, isPrivateOutput, STEPS, synthClick, synthDrum, type DrumId, type DrumPattern } from '../../utils/drums';
@@ -112,6 +112,11 @@ export type Project = {
   bpm: number;
   /** The song trim: only this part plays, loops and gets posted. null = the whole song. */
   range: SongRange | null;
+  /**
+   * The song's own length, seconds, when its end was dragged out past the last clip (beats and
+   * instruments play on to it). Absent = as long as the clips, or 30 s with no voice.
+   */
+  length?: number;
 };
 
 /**
@@ -196,11 +201,9 @@ export const barSeconds = (bpm: number) => (4 * 60) / bpm;
 /** The part of the song that plays — the trim, or everything. */
 export const songRange = (p: Project): SongRange => clampRange(p.range, projectLength(p), p.bpm);
 
-/** Every clip's full length, rounded up to whole bars (ignores the trim). */
+/** The whole song in whole bars: every clip's full length, or longer if its end was dragged out (ignores the trim). */
 export function projectLength(p: Project): number {
-  const bar = barSeconds(p.bpm);
-  const end = p.voices.reduce((m, v) => Math.max(m, clipEnd(v)), 0);
-  return Math.max(1, Math.ceil(end / bar - 1e-6)) * bar;
+  return songLength(p.voices.reduce((m, v) => Math.max(m, clipEnd(v)), 0), p.voices.length > 0, p.length, p.bpm);
 }
 
 export class StudioEngine {

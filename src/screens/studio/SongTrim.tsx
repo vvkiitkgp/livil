@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { COLORS } from '../../theme/colors';
 import { formatClock } from './RecordPanel';
-import { clampRange, snapToStep, type SongRange } from './timeline';
+import { MAX_TRACK_SECONDS } from '../../../shared/constants/media';
+import { clampRange, endDragTime, snapToStep, songEndAt, viewFor, type SongRange } from './timeline';
 
 const HEIGHT = 26;
 const GRIP = 22;
@@ -11,54 +12,78 @@ const GRIP = 22;
 type Props = {
   /** Seconds the row spans — the same scale as the ruler and clip rows. */
   viewLen: number;
-  /** The whole song (every clip, rounded to bars). */
+  /** The whole song, in whole bars. */
   full: number;
+  /** The clips' own length in whole bars (0 with no voice): the song can't end before it without trimming one. */
+  natural: number;
+  /** The length the song's end was dragged out to, if it was. */
+  length: number | undefined;
   /** The current trim (already clamped), or the whole song. */
   range: SongRange;
   bpm: number;
   onGesture: (active: boolean) => void;
-  /** The finger lifted: the new trim, or null when it covers the whole song again. */
-  onCommit: (range: SongRange | null) => void;
+  /** While the end is pulled past the row: the seconds every row must show to keep up. */
+  onView: (viewLen: number) => void;
+  /** The finger lifted: the new trim (null = the whole song) and the song's own length. */
+  onCommit: (range: SongRange | null, length: number | undefined) => void;
 };
 
+type Edge = 'start' | 'end';
+type Dragged = { range: SongRange; full: number; length: number | undefined };
+
 /**
- * The whole-song trim: drag the two grips in from the ends to choose the part that plays,
- * loops and gets posted. Snaps to the drum grid so the loop stays on the beat.
+ * The whole song: drag the two grips in from the ends to choose the part that plays, loops and
+ * gets posted, or pull the end grip OUT to make the song longer (the timeline zooms out to keep
+ * up). Snaps to the drum grid, and a longer song to whole bars, so the loop stays on the beat.
  */
-export function SongTrim({ viewLen, full, range, bpm, onGesture, onCommit }: Props) {
+export function SongTrim({ viewLen, full, natural, length, range, bpm, onGesture, onView, onCommit }: Props) {
   const [w, setW] = useState(0);
-  const [drag, setDrag] = useState<{ edge: 'start' | 'end'; dx: number } | null>(null);
+  const [drag, setDrag] = useState<Dragged | null>(null);
   const pps = w > 0 ? w / viewLen : 1;
+  /** The end grip, the song and the timeline's scale as they were when the finger went down. */
+  const origin = useRef({ view: viewLen, full, x: 0 });
 
-  const moved = (edge: 'start' | 'end', dx: number): SongRange => {
-    const t = snapToStep((edge === 'start' ? range.start : range.end) + dx / pps, bpm);
-    return clampRange(edge === 'start' ? { start: t, end: range.end } : { start: range.start, end: t }, full, bpm);
+  const moved = (edge: Edge, dx: number): Dragged => {
+    if (edge === 'start') {
+      const t = snapToStep(range.start + dx / pps, bpm);
+      return { range: clampRange({ start: t, end: range.end }, full, bpm), full, length };
+    }
+    const o = origin.current;
+    return songEndAt(endDragTime(o.x + dx, Math.max(1, w), o.view, o.full), range.start, natural, bpm, MAX_TRACK_SECONDS);
   };
-  const shown = drag ? moved(drag.edge, drag.dx) : range;
+  const shown = drag?.range ?? range;
+  const song = drag?.full ?? full;
 
-  const pan = (edge: 'start' | 'end') =>
+  const pan = (edge: Edge) =>
     Gesture.Pan()
       .runOnJS(true)
       .activeOffsetX([-4, 4])
       .failOffsetY([-14, 14])
-      .onStart(() => onGesture(true))
-      .onUpdate(e => setDrag({ edge, dx: e.translationX }))
+      .onStart(() => {
+        origin.current = { view: viewLen, full, x: range.end * pps };
+        onGesture(true);
+      })
+      .onUpdate(e => {
+        const d = moved(edge, e.translationX);
+        setDrag(d);
+        if (edge === 'end') onView(viewFor(d.range.end, origin.current.view, origin.current.full));
+      })
       .onEnd(e => {
-        const r = moved(edge, e.translationX);
-        onCommit(r.start <= 1e-3 && r.end >= full - 1e-3 ? null : r);
+        const d = moved(edge, e.translationX);
+        onCommit(d.range.start <= 1e-3 && d.range.end >= d.full - 1e-3 ? null : d.range, d.length);
       })
       .onFinalize(() => { setDrag(null); onGesture(false); });
 
   const left = shown.start * pps;
   const right = shown.end * pps;
-  const trimmed = shown.start > 1e-3 || shown.end < full - 1e-3;
+  const trimmed = shown.start > 1e-3 || shown.end < song - 1e-3;
   const label = drag || trimmed
     ? `${formatClock(shown.start, true)} – ${formatClock(shown.end, true)} · ${formatClock(shown.end - shown.start, true)}`
-    : 'Drag the ends to trim the song';
+    : 'Drag the ends to trim, or pull the end out to go longer';
 
   return (
     <View style={styles.root} onLayout={e => setW(Math.floor(e.nativeEvent.layout.width))}>
-      <View style={[styles.song, { width: Math.min(w, full * pps) }]} />
+      <View style={[styles.song, { width: Math.min(w, song * pps) }]} />
       <View style={[styles.kept, { left, width: Math.max(2, right - left) }]}>
         <Text style={[styles.label, !drag && !trimmed && styles.labelIdle]} numberOfLines={1}>{label}</Text>
       </View>
@@ -68,7 +93,7 @@ export function SongTrim({ viewLen, full, range, bpm, onGesture, onCommit }: Pro
         </View>
       </GestureDetector>
       <GestureDetector gesture={pan('end')}>
-        <View style={[styles.grip, { left: right - GRIP / 2 }]} accessibilityLabel="Trim the end of the song" hitSlop={{ top: 8, bottom: 8 }}>
+        <View style={[styles.grip, { left: right - GRIP / 2 }]} accessibilityLabel="Trim the end of the song, or pull it out to make the song longer" hitSlop={{ top: 8, bottom: 8 }}>
           <View style={styles.bar} />
         </View>
       </GestureDetector>

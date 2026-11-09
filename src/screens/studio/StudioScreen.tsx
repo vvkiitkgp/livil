@@ -14,7 +14,7 @@ import { COLORS } from '../../theme/colors';
 import { DEFAULT_FX } from '../../utils/audioFx/effects';
 import { autoLevel } from '../../utils/audioFx/level';
 import { analyzeTake, applyMagicTune, type TuneAnalysis } from '../../utils/magicTune';
-import { emptyPattern } from '../../utils/drums';
+import { DRUM_IDS, emptyPattern } from '../../utils/drums';
 import { keyName } from '../../utils/magicTune';
 import { BeatsSheet } from './BeatsSheet';
 import { SynthSheet } from './SynthSheet';
@@ -90,6 +90,8 @@ export default function StudioScreen() {
   /** Record: take the tempo from the first voice (default) instead of setting one. */
   const [autoTempo, setAutoTempo] = useState(true);
   const restartNext = useRef(false);
+  /** The Editor has been open this session: closing Record goes back to it, voice or no voice. */
+  const seenEditor = useRef(false);
   const leaving = useRef(false);
   /**
    * Who this Editor session belongs to — looked up ONCE, when it starts (opening a draft needs
@@ -267,7 +269,10 @@ export default function StudioScreen() {
     return () => sub.remove();
   }, [engine]);
 
-  const unsaved = project.voices.length > 0 && (project !== savedProject || diskStale);
+  // Something to keep: a voice, a beat or an instrument. A song can be saved without a voice
+  // (beats first, sing later); an untouched new one is not work to warn about.
+  const hasContent = project.voices.length > 0 || project.synths.length > 0 || DRUM_IDS.some(id => project.pattern[id].some(Boolean));
+  const unsaved = (hasContent || !!draft) && (project !== savedProject || diskStale);
   // A finished mix belongs to one version of the project; drop it as soon as that changes (it
   // is two full-length channels, and it kept the old project's takes reachable too).
   useEffect(() => {
@@ -506,6 +511,8 @@ export default function StudioScreen() {
     }
   }, [posting, mix, save, showToast, navigation, draft, savedProject, project, owner]);
 
+  if (phase === 'editor') seenEditor.current = true;
+
   if (!ready || opening) {
     return <StudioLoading title={opening ? 'Opening your draft' : 'Opening the Editor'} detail={opening ? loadStep.detail : 'Getting the studio ready…'} progress={opening ? loadStep.progress : null} />;
   }
@@ -520,9 +527,10 @@ export default function StudioScreen() {
           onDone={t => { setPlaying(false); setPending(t); setPhase('tune'); }}
           onClose={() => {
             setPlaying(false);
-            if (project.voices.length) setPhase('editor');
+            if (project.voices.length || seenEditor.current) setPhase('editor');
             else { leaving.current = true; navigation.goBack(); }
           }}
+          onSkip={project.voices.length === 0 ? () => { setPlaying(false); setPhase('editor'); } : undefined}
           onError={msg => showToast(msg, { kind: 'error' })}
           bpm={project.bpm}
           onBpm={bpm => update(p => ({ ...p, bpm }))}
@@ -572,7 +580,7 @@ export default function StudioScreen() {
           cleaning={cleaning}
           onOpenTune={lane => { engine.stop(); setPlaying(false); setEditing(lane); setPhase('tune'); }}
           onBpm={bpm => update(p => ({ ...p, bpm }), true)}
-          onRange={range => update(p => ({ ...p, range }), true)}
+          onRange={(range, length) => update(p => ({ ...p, range, length }), true)}
           onDrumVolume={v => update(p => ({ ...p, drumVolume: v }))}
           onMasterVolume={v => update(p => ({ ...p, masterVolume: v }))}
           onOpenBeats={() => setBeatsOpen(true)}

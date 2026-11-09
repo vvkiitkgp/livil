@@ -15,7 +15,16 @@ export type Clip = Pick<VoiceLane, 'name' | 'start' | 'trimStart' | 'trimEnd' | 
 import type { SongRange } from './timeline';
 
 const HEIGHT = 56;
-const HANDLE = 18;
+/** The trim grip you see at each end of a clip. */
+const GRIP_W = 6;
+const GRIP_H = 32;
+/**
+ * The strip that takes the touch is far wider than the grip: this much outside the clip and
+ * this much into it. An 18dp strip centred on the edge was hard to catch, and at the row's
+ * left edge half of it (and of the grip) was cut off.
+ */
+const HANDLE_OUT = 14;
+const HANDLE_IN = 26;
 const MIN_CLIP = 0.1;
 /** One waveform bar every this many dp, on a grid fixed to the take (so trimming never reshuffles it). */
 const COL = 3;
@@ -105,6 +114,12 @@ export function ClipTrack({ clip: lane, takeLen, peaks, viewLen, bpm, barSec, pl
   // Waveform bars sit at fixed points of the TAKE, not of the clip: trimming an edge only
   // covers or uncovers bars, it never squeezes or shifts the ones you are lining up against.
   const segW = len * pps;
+  // The handles never take more than a third of the clip each, so a short one can still be moved.
+  const inner = Math.min(HANDLE_IN, segW / 3);
+  const startX = shown.start * pps;
+  const endX = (shown.start + len) * pps;
+  // Drawn on the edge, but kept whole when the edge is the row's own.
+  const gripLeft = (x: number) => Math.min(Math.max(0, w - GRIP_W), Math.max(0, x - GRIP_W / 2));
   const colSec = COL / pps;
   const offsetPx = shown.trimStart * pps;
   const wave: { x: number; p: number }[] = [];
@@ -136,20 +151,18 @@ export function ClipTrack({ clip: lane, takeLen, peaks, viewLen, bpm, barSec, pl
 
       <GestureDetector gesture={pan('move')}>
         <View
-          style={[styles.hit, { left: shown.start * pps + HANDLE / 2, width: Math.max(8, segW * shown.loops - HANDLE) }]}
+          style={[styles.hit, { left: startX + inner, width: Math.max(8, segW * shown.loops - inner - (shown.loops > 1 ? 0 : inner)) }]}
           accessibilityLabel={`${lane.name} clip. Drag to move.`}
         />
       </GestureDetector>
       <GestureDetector gesture={pan('left')}>
-        <View style={[styles.handle, { left: shown.start * pps - HANDLE / 2 }]} accessibilityLabel="Trim the start">
-          <View style={styles.grip} />
-        </View>
+        <View style={[styles.handle, { left: startX - HANDLE_OUT, width: HANDLE_OUT + inner }]} accessibilityLabel="Trim the start" />
       </GestureDetector>
       <GestureDetector gesture={pan('right')}>
-        <View style={[styles.handle, { left: (shown.start + len) * pps - HANDLE / 2 }]} accessibilityLabel="Trim the end">
-          <View style={styles.grip} />
-        </View>
+        <View style={[styles.handle, { left: endX - inner, width: HANDLE_OUT + inner }]} accessibilityLabel="Trim the end" />
       </GestureDetector>
+      <View pointerEvents="none" style={[styles.grip, { left: gripLeft(startX) }]} />
+      <View pointerEvents="none" style={[styles.grip, { left: gripLeft(endX) }]} />
 
       <View pointerEvents="none" style={[styles.cut, { left: 0, width: Math.max(0, range.start * pps) }]} />
       <View pointerEvents="none" style={[styles.cut, { left: range.end * pps, right: 0 }]} />
@@ -177,8 +190,8 @@ const styles = StyleSheet.create({
   clipLoop: { backgroundColor: 'rgba(139, 61, 255, 0.10)', borderStyle: 'dashed' },
   waveBar: { position: 'absolute', width: 2, borderRadius: 1, backgroundColor: COLORS.purpleNeon },
   hit: { position: 'absolute', top: 0, bottom: 0 },
-  handle: { position: 'absolute', top: 0, bottom: 0, width: HANDLE, alignItems: 'center', justifyContent: 'center' },
-  grip: { width: 4, height: 22, borderRadius: 2, backgroundColor: COLORS.purpleLight },
+  handle: { position: 'absolute', top: 0, bottom: 0 },
+  grip: { position: 'absolute', top: (HEIGHT - GRIP_H) / 2, width: GRIP_W, height: GRIP_H, borderRadius: GRIP_W / 2, backgroundColor: COLORS.purpleLight },
   cut: { position: 'absolute', top: 0, bottom: 0, backgroundColor: 'rgba(10, 10, 15, 0.65)' },
   edgeLine: { position: 'absolute', top: 0, bottom: 0, width: 2, backgroundColor: COLORS.purpleLight },
   edgeTag: { position: 'absolute', top: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: COLORS.bg },

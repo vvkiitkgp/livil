@@ -27,6 +27,8 @@ type Props = {
   autoTempo: boolean;
   onAutoTempo: (on: boolean) => void;
   onClose: () => void;
+  /** Open the Editor with no voice (beats and instruments first). Absent once the song has one. */
+  onSkip?: () => void;
   onError: (message: string) => void;
 };
 
@@ -52,7 +54,7 @@ export function formatClock(sec: number, tenths = false): string {
 
 /** Record one take. Stop, Retake, or Done (→ Magic Tune). */
 export function RecordPanel(props: Props) {
-  const { engine, takeNumber, overBacking, onDone, onClose, onError, bpm, onBpm, metronome, onMetronome, autoTempo, onAutoTempo } = props;
+  const { engine, takeNumber, overBacking, onDone, onClose, onSkip, onError, bpm, onBpm, metronome, onMetronome, autoTempo, onAutoTempo } = props;
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [levels, setLevels] = useState<number[]>(() => new Array(BARS).fill(0));
@@ -299,7 +301,11 @@ export function RecordPanel(props: Props) {
           <Icon name="close" size={22} color={COLORS.white} />
         </TouchableOpacity>
         <Text style={styles.title}>Record</Text>
-        <View style={styles.headerSide} />
+        {onSkip && !take && !recording && !counting ? (
+          <Pressable onPress={onSkip} style={({ pressed }) => [styles.headerSide, pressed && styles.pressed]} accessibilityRole="button" accessibilityLabel="Skip recording and open the Editor" hitSlop={10}>
+            <Text style={styles.skip}>Skip</Text>
+          </Pressable>
+        ) : <View style={styles.headerSide} />}
       </View>
       <MicPicker engine={engine} disabled={recording || counting} />
 
@@ -498,7 +504,9 @@ export function RecordPanel(props: Props) {
       <Text style={styles.foot}>
         {overBacking
           ? 'Your other tracks play while you record. Use headphones so they stay out of this take.'
-          : 'Your music is paused while you record. Headphones recommended.'}
+          : onSkip
+            ? 'Your music is paused while you record. Headphones recommended. No voice yet? Tap Skip to start with beats.'
+            : 'Your music is paused while you record. Headphones recommended.'}
       </Text>
     </SafeAreaView>
   );
@@ -509,6 +517,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4 },
   headerSide: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   title: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
+  skip: { color: COLORS.purpleLight, fontSize: 15, fontWeight: '600' },
   clockWrap: { alignItems: 'center', gap: 6, marginTop: 20 },
   clock: { color: COLORS.white, fontSize: 56, fontWeight: '700', letterSpacing: -1, fontVariant: ['tabular-nums'] },
   sub: { color: COLORS.textSecondary, fontSize: 13 },

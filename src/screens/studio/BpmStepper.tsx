@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon } from '../../components/Icon';
 import { COLORS } from '../../theme/colors';
@@ -10,19 +10,48 @@ export const MAX_BPM = 180;
 const HOLD_MS = 380;
 const REPEAT_MS = 110;
 const FASTEST_MS = 40;
+/** With `settle`: the tempo is handed over this long after the last step. */
+const SETTLE_MS = 300;
 
 type Props = {
   bpm: number;
   onBpm: (bpm: number) => void;
   disabled?: boolean;
+  /**
+   * For a screen where a new tempo is expensive. In the Editor every BPM restarts playback
+   * and redraws every track, and a held button asked for that up to 25 times a second: the
+   * number crawled, taps lagged and the ticks bunched up. With this the number runs ahead by
+   * itself and `onBpm` is called once, when the stepping stops.
+   */
+  settle?: boolean;
 };
 
 /** − 92 BPM +. Tap for one BPM, hold to keep going (faster and faster); a tick on every step. */
-export function BpmStepper({ bpm, onBpm, disabled }: Props) {
+export function BpmStepper({ bpm, onBpm, disabled, settle }: Props) {
   // The interval reads the latest value, not the one from when the finger went down.
   const current = useRef(bpm);
-  current.current = bpm;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Stepped to, not yet handed over (`settle`). While it waits, the number shown is ours. */
+  const waiting = useRef(false);
+  const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const down = useRef(false);
+  const [ahead, setAhead] = useState(bpm);
+  if (!waiting.current) current.current = bpm;
+  const shown = waiting.current ? ahead : bpm;
+  const latestOnBpm = useRef(onBpm);
+  latestOnBpm.current = onBpm;
+  const handOver = () => {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = null;
+    if (!waiting.current) return;
+    waiting.current = false;
+    latestOnBpm.current(current.current);
+  };
+  /** Hand over once the stepping has stopped: never under a finger that is still down. */
+  const settleSoon = () => {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = setTimeout(handOver, SETTLE_MS);
+  };
 
   const step = (dir: 1 | -1) => {
     // A tempo taken from the singer's voice can be 96.4: a step goes to the next whole BPM.
@@ -31,7 +60,10 @@ export function BpmStepper({ bpm, onBpm, disabled }: Props) {
     if (next === current.current) return false;
     current.current = next;
     haptics.tick();
-    onBpm(next);
+    if (!settle) { onBpm(next); return true; }
+    waiting.current = true;
+    setAhead(next);
+    if (!down.current) settleSoon();
     return true;
   };
   const stopRepeat = () => {
@@ -49,13 +81,22 @@ export function BpmStepper({ bpm, onBpm, disabled }: Props) {
     };
     timer.current = setTimeout(again, HOLD_MS);
   };
-  useEffect(() => stopRepeat, []);
+  // Leaving with a tempo still waiting: hand it over, never drop it.
+  useEffect(() => () => { stopRepeat(); handOver(); }, []);
   useEffect(() => { if (disabled) stopRepeat(); }, [disabled]);
 
   const button = (dir: 1 | -1) => (
     <Pressable
-      onPressIn={() => startRepeat(dir)}
-      onPressOut={stopRepeat}
+      onPressIn={() => {
+        down.current = true;
+        if (pending.current) clearTimeout(pending.current);
+        startRepeat(dir);
+      }}
+      onPressOut={() => {
+        down.current = false;
+        stopRepeat();
+        if (waiting.current) settleSoon();
+      }}
       disabled={disabled}
       hitSlop={8}
       style={({ pressed }) => pressed && styles.pressed}
@@ -72,12 +113,12 @@ export function BpmStepper({ bpm, onBpm, disabled }: Props) {
       accessible
       accessibilityRole="adjustable"
       accessibilityLabel="Tempo"
-      accessibilityValue={{ text: `${bpm} BPM` }}
+      accessibilityValue={{ text: `${shown} BPM` }}
       accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
       onAccessibilityAction={e => { if (!disabled) step(e.nativeEvent.actionName === 'increment' ? 1 : -1); }}
     >
       {button(-1)}
-      <Text style={styles.text}>{`${bpm} BPM`}</Text>
+      <Text style={styles.text}>{`${shown} BPM`}</Text>
       {button(1)}
     </View>
   );

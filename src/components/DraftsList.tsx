@@ -25,7 +25,7 @@ type Props = {
 const metaOf = (d: DraftSummary) => (d.uploadKind
   ? [d.uploadKind === 'video' ? 'Video' : 'Song', d.durationSec > 0 && clock(d.durationSec)]
   : [
-    `${d.voiceCount} ${d.voiceCount === 1 ? 'voice' : 'voices'}`,
+    d.voiceCount === 0 ? 'No voice yet' : `${d.voiceCount} ${d.voiceCount === 1 ? 'voice' : 'voices'}`,
     d.instrumentCount > 0 && `${d.instrumentCount} ${d.instrumentCount === 1 ? 'instrument' : 'instruments'}`,
     clock(d.durationSec),
   ]);
