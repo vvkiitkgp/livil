@@ -25,7 +25,9 @@ export function BpmStepper({ bpm, onBpm, disabled }: Props) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const step = (dir: 1 | -1) => {
-    const next = Math.min(MAX_BPM, Math.max(MIN_BPM, current.current + dir));
+    // A tempo taken from the singer's voice can be 96.4: a step goes to the next whole BPM.
+    const whole = dir > 0 ? Math.floor(current.current) + 1 : Math.ceil(current.current) - 1;
+    const next = Math.min(MAX_BPM, Math.max(MIN_BPM, whole));
     if (next === current.current) return false;
     current.current = next;
     haptics.tick();

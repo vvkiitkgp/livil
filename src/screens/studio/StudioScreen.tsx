@@ -87,6 +87,8 @@ export default function StudioScreen() {
   const voiceKey: SynthKey | null = tunedKey && tunedKey.mode !== 'chromatic' ? { tonic: tunedKey.tonic, mode: tunedKey.mode } : null;
   const [confirmExit, setConfirmExit] = useState(false);
   const [metronome, setMetronome] = useState(true);
+  /** Record: take the tempo from the first voice (default) instead of setting one. */
+  const [autoTempo, setAutoTempo] = useState(true);
   const restartNext = useRef(false);
   const leaving = useRef(false);
   /**
@@ -526,6 +528,8 @@ export default function StudioScreen() {
           onBpm={bpm => update(p => ({ ...p, bpm }))}
           metronome={metronome}
           onMetronome={setMetronome}
+          autoTempo={autoTempo}
+          onAutoTempo={setAutoTempo}
         />
       )}
       {phase === 'tune' && pending && (

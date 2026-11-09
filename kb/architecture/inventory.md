@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-602 TypeScript file(s) under `src/`, 119,551 lines.
+604 TypeScript file(s) under `src/`, 120,384 lines.
 
 ## Size hotspots
 
@@ -34,7 +34,7 @@ reading alone (Constitution P28).
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1317 |
+| `src/screens/studio/studioEngine.ts` | 1321 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -45,7 +45,7 @@ reading alone (Constitution P28).
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 673 |
+| `src/screens/studio/StudioScreen.tsx` | 677 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
@@ -109,7 +109,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,577 lines.
+75 file(s), 35,767 lines.
 
 | File | Lines |
 |---|---:|
@@ -119,25 +119,25 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1317 |
+| `src/screens/studio/studioEngine.ts` | 1321 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 673 |
+| `src/screens/studio/StudioScreen.tsx` | 677 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
+| `src/screens/studio/RecordPanel.tsx` | 571 |
 | `src/screens/studio/SynthSheet.tsx` | 483 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
-| `src/screens/studio/RecordPanel.tsx` | 391 |
 | `src/screens/studio/EditorPanel.tsx` | 387 |
 | `src/screens/studio/TunePanel.tsx` | 382 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
@@ -179,8 +179,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/MicPicker.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |
 | `src/screens/studio/StudioLoading.tsx` | 99 |
+| `src/screens/studio/BpmStepper.tsx` | 92 |
 | `src/screens/studio/SongTrim.tsx` | 91 |
-| `src/screens/studio/BpmStepper.tsx` | 90 |
 | `src/screens/studio/finishTake.ts` | 83 |
 | `src/screens/studio/StudioSlider.tsx` | 78 |
 | `src/screens/studio/TimeRuler.tsx` | 73 |
@@ -595,11 +595,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-129 file(s), 13,252 lines.
+131 file(s), 13,895 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/synth.ts` | 910 |
+| `src/utils/tempo/index.ts` | 453 |
 | `src/utils/audioFx/master.ts` | 447 |
 | `src/utils/__tests__/synth.test.ts` | 405 |
 | `src/utils/__tests__/chatTyping.test.tsx` | 268 |
@@ -612,6 +613,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/haptics.ts` | 201 |
 | `src/utils/__tests__/magicTune.test.ts` | 195 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
+| `src/utils/__tests__/tempo.test.ts` | 190 |
 | `src/utils/audioClean/clickRepair.ts` | 190 |
 | `src/utils/__tests__/shareLinks.test.ts` | 186 |
 | `src/utils/chatLinks.ts` | 184 |

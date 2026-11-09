@@ -1192,12 +1192,14 @@ export class StudioEngine {
   /**
    * Start a take. `withBacking` plays the project underneath from the top so a new voice
    * can be sung over the others (headphones, or the speaker bleeds into the take).
+   * `onAudio` hears each chunk as it arrives (the live tempo readout); it must not keep it.
    * Returns an error message instead of throwing.
    */
   async startRecording(
     onLevel: (rms: number) => void,
     withBacking: boolean,
     countIn = false,
+    onAudio?: (chunk: Float32Array, sampleRate: number) => void,
   ): Promise<string | null> {
     if (!this.ctx) return 'Audio is not ready yet.';
     const perm = await AudioManager.requestRecordingPermissions();
@@ -1213,7 +1215,9 @@ export class StudioEngine {
       const data = e.buffer.getChannelData(0);
       this.recordRate = e.buffer.sampleRate;
       if (this.firstChunk) { const f = this.firstChunk; this.firstChunk = null; f(data.length); }
-      this.chunks.push(new Float32Array(data));
+      const chunk = new Float32Array(data);
+      this.chunks.push(chunk);
+      onAudio?.(chunk, e.buffer.sampleRate);
       let s = 0;
       for (let i = 0; i < data.length; i++) s += data[i] * data[i];
       onLevel(Math.sqrt(s / Math.max(1, data.length)));
