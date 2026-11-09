@@ -121,13 +121,20 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
       gain.connect(master);
       for (let k = 0; k * stepSec < seconds - 1e-6; k++) {
         for (const h of hits[(firstStep + k) % SYNTH_STEPS]) {
-          const key = `${part.sound}|${h.midis.join(',')}|${h.len}`;
+          const key = `${part.sound}|${h.midis.join(',')}|${h.len}|${h.gap || ''}${h.mute ? 'x' : ''}${h.cut ? 'c' : ''}${h.hard !== undefined && h.hard < 1 ? `h${h.hard}` : ''}`;
           let b = rendered.get(key);
-          if (!b) { b = buffer(renderSynth(part.sound, h.midis, h.len * stepSec, sampleRate), sampleRate); rendered.set(key, b); }
+          if (!b) { b = buffer(renderSynth(part.sound, h.midis, h.len * stepSec, sampleRate, h), sampleRate); rendered.set(key, b); }
           const src = ctx.createBufferSource();
           src.buffer = b;
-          src.connect(gain);
-          src.start(k * stepSec);
+          // A guitar stroke's own loudness and timing, exactly as the Editor plays it (fireSynth).
+          if (h.gain !== undefined && h.gain !== 1) {
+            const stroke = new GainNode(ctx, { ...own, gain: h.gain });
+            src.connect(stroke);
+            stroke.connect(gain);
+          } else {
+            src.connect(gain);
+          }
+          src.start(Math.max(0, k * stepSec + (h.shift ?? 0)));
         }
       }
     }

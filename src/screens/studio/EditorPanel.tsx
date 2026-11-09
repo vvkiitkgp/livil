@@ -8,7 +8,7 @@ import { Icon } from '../../components/Icon';
 import { COLORS } from '../../theme/colors';
 import { anyFx, VOLUME_MAX } from '../../utils/audioFx/effects';
 import { DRUM_IDS, STEPS } from '../../utils/drums';
-import { CHORD_LOOPS, SYNTH_NAMES, SYNTH_STEPS, synthKeyName, type SynthPart } from '../../utils/synth';
+import { CHORD_LOOPS, guitarStyleName, isGuitar, SYNTH_NAMES, SYNTH_STEPS, synthKeyName, type SynthPart } from '../../utils/synth';
 import { BpmStepper } from './BpmStepper';
 import { ClipTrack, peaksOf } from './ClipTrack';
 import { formatClock } from './RecordPanel';
@@ -278,12 +278,18 @@ export function EditorPanel(p: Props) {
 
         {project.synths.map(s => {
           const loop = CHORD_LOOPS.find(c => c.id === s.chords);
-          const meta = [synthKeyName(s.key), loop && `${loop.name} chords`, s.notes.length > 0 && `${s.notes.length} notes`].filter(Boolean).join(' · ');
+          const guitar = isGuitar(s.sound);
+          const meta = [
+            synthKeyName(s.key),
+            loop && `${loop.name} chords`,
+            guitar && guitarStyleName(s),
+            s.notes.length > 0 && `${s.notes.length} ${guitar ? 'chords' : 'notes'}`,
+          ].filter(Boolean).join(' · ');
           return (
             <View key={s.id} style={styles.lane}>
               <Pressable onPress={() => p.onOpenSynth(s)} style={styles.drumsTap} accessibilityRole="button" accessibilityLabel={`${SYNTH_NAMES[s.sound]}. Open it.`}>
                 <View style={styles.laneHead}>
-                  <Icon name="piano" size={14} color={COLORS.purpleLight} />
+                  <Icon name={guitar ? 'guitar' : 'piano'} size={14} color={COLORS.purpleLight} />
                   <Text style={styles.laneName}>{SYNTH_NAMES[s.sound]}</Text>
                   <Text style={[styles.laneMeta, { flex: 1 }]} numberOfLines={1}>{meta}</Text>
                 </View>

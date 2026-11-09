@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-11-08
+last_verified: 2026-11-09
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-602 TypeScript file(s) under `src/`, 118,124 lines.
+602 TypeScript file(s) under `src/`, 119,530 lines.
 
 ## Size hotspots
 
@@ -34,10 +34,10 @@ reading alone (Constitution P28).
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
+| `src/screens/studio/studioEngine.ts` | 1317 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/screens/studio/studioEngine.ts` | 1095 |
 | `src/components/FloatingPlayer.tsx` | 1083 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
@@ -109,7 +109,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-75 file(s), 35,165 lines.
+75 file(s), 35,577 lines.
 
 | File | Lines |
 |---|---:|
@@ -119,8 +119,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
+| `src/screens/studio/studioEngine.ts` | 1317 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/screens/studio/studioEngine.ts` | 1095 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
@@ -132,20 +132,20 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
+| `src/screens/studio/SynthSheet.tsx` | 483 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
 | `src/screens/studio/RecordPanel.tsx` | 391 |
+| `src/screens/studio/EditorPanel.tsx` | 387 |
 | `src/screens/studio/TunePanel.tsx` | 382 |
-| `src/screens/studio/EditorPanel.tsx` | 381 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 359 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 336 |
 | `src/screens/auth/FirstRunGuideScreen.tsx` | 325 |
 | `src/screens/main/__tests__/SearchScreen.test.tsx` | 324 |
 | `src/screens/main/__tests__/PrivacyDataScreen.test.tsx` | 322 |
-| `src/screens/studio/SynthSheet.tsx` | 306 |
 | `src/screens/main/NotificationSettingsScreen.tsx` | 299 |
 | `src/screens/main/ProfilePeopleScreen.tsx` | 292 |
 | `src/screens/auth/SignUpScreen.tsx` | 290 |
@@ -174,8 +174,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/AddToLivilScreen.tsx` | 163 |
+| `src/screens/studio/renderMix.ts` | 157 |
 | `src/screens/studio/EffectsSheet.tsx` | 151 |
-| `src/screens/studio/renderMix.ts` | 150 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |
 | `src/screens/studio/StudioLoading.tsx` | 99 |
@@ -595,13 +595,14 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-129 file(s), 12,244 lines.
+129 file(s), 13,238 lines.
 
 | File | Lines |
 |---|---:|
+| `src/utils/synth.ts` | 910 |
 | `src/utils/audioFx/master.ts` | 447 |
+| `src/utils/__tests__/synth.test.ts` | 405 |
 | `src/utils/__tests__/chatTyping.test.tsx` | 268 |
-| `src/utils/synth.ts` | 253 |
 | `src/utils/audioFile/flac.ts` | 234 |
 | `src/utils/__tests__/captionFit.test.ts` | 226 |
 | `src/utils/__tests__/playTracker.test.ts` | 226 |
@@ -677,7 +678,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/chatOrder.test.ts` | 69 |
 | `src/utils/playerCloseGesture.ts` | 69 |
 | `src/utils/__tests__/likeStore.test.ts` | 68 |
-| `src/utils/__tests__/synth.test.ts` | 68 |
 | `src/utils/errorMessages.ts` | 68 |
 | `src/utils/audioFile/wav.ts` | 66 |
 | `src/utils/__tests__/mentions.test.ts` | 62 |
