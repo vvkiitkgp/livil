@@ -51,6 +51,7 @@ import { fetchTrackCollaborators, type TrackCollaboratorInfo } from '../services
 import { fetchAlbumForTrack, type AlbumForTrack } from '../services/albums';
 import { fetchPostMetrics, fetchTrackPlaysTotal } from '../services/posts';
 import CommentsSheet from './CommentsSheet';
+import Scrim from './Scrim';
 import PostLikersSheet from './PostLikersSheet';
 import {
   fetchUserPlaylists,
@@ -117,6 +118,11 @@ let zoomHintLearnedThisSession = false;
  * pill doesn't ride the scale-up animation.
  */
 const ZOOM_HINT_DELAY = 500;
+// ── Controls shadow (video only) ─────────────────────────────────────────────
+/** The shadow holds its darkness up to the song name, then fades out over this much. */
+const CONTROLS_SCRIM_FADE = 56;
+/** Darkness of the held part, from the screen bottom to the song name. */
+const CONTROLS_SCRIM_PEAK = 0.5;
 // Breathing room between the cover art and the header / title block.
 const ART_GAP_TOP = 12;
 const ART_GAP_BOTTOM = 16;
@@ -1705,6 +1711,9 @@ export default function FullScreenPlayer() {
   const actionRowBottom = safeBottom + 44;
   const seekRowBottom = playerBottom + FLOAT_D + SEEK_GAP - SCRUBBER_SLOP;
   const bottomInfoBottom = seekRowBottom + SEEK_BLOCK_H + SEEK_GAP;
+  // Held dark from the screen bottom to the top of the title block, then a short fade.
+  const controlsScrimHold = bottomInfoBottom + bottomInfoH;
+  const controlsScrimH = Math.ceil(controlsScrimHold + CONTROLS_SCRIM_FADE);
   // ── Audio cover-art card ──────────────────────────────────────────────────
   // Audio has no picture to fill the screen with, so a full-bleed crop just
   // hides the edges of the artwork. Instead the card takes the ARTWORK'S OWN
@@ -1956,7 +1965,24 @@ export default function FullScreenPlayer() {
         </View>
       ) : null}
 
-      {/* Scrims removed — no background overlay on video */}
+      {/* A shadow under the controls: held from the screen bottom up to the song name,
+          then a quick fade, so white text and the seek bar stay readable on a bright picture.
+          Video only (audio already sits on black); fades with the controls, so clean
+          view shows the bare picture. */}
+      {nowPlaying.mediaKind === 'video' ? (
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: controlsAnim }]} pointerEvents="none">
+          <Scrim
+            // Remounted when its height changes (the title block is measured after the
+            // first frame, and again on a one- vs two-line title), so it is always
+            // painted at its real size rather than resized in place.
+            key={controlsScrimH}
+            edge="bottom"
+            height={controlsScrimH}
+            peakOpacity={CONTROLS_SCRIM_PEAK}
+            plateau={controlsScrimHold / controlsScrimH}
+          />
+        </Animated.View>
+      ) : null}
 
       {/* ── Swipe-to-close gesture — background hit zone only, no children ── */}
       {/* Interactive elements (header, credits, stats) are siblings rendered AFTER
@@ -2007,7 +2033,7 @@ export default function FullScreenPlayer() {
           }}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Icon name="repost" size={12} color={COLORS.purpleLight} />
+          <Icon name="repost" size={12} color={COLORS.white} />
           <Text style={styles.repostBtnLabel}>Repost</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -2218,36 +2244,41 @@ function CompactStats({
 
   return (
     <View style={csSt.row}>
-      {/* Interactive group (like + comments) — bare buttons so they read as
-          actionable against the album art. */}
+      {/* Interactive group (like + comments + share) — bare buttons so they read as
+          actionable against the album art. Each one is a full-height tap box and the
+          boxes touch, so a near-miss lands on a neighbour instead of falling through
+          to the video (which toggles clean view) or the credit line above. */}
       <View style={csSt.activeGroup}>
-        <View style={csSt.item}>
-          <TouchableOpacity onPress={handleLike} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
-            <Icon name="heart" size={16} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => onLikesPress(effective.postId)}
-            activeOpacity={0.7}
-            disabled={count === 0}
-            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-          >
-            <Text style={[csSt.val, liked && csSt.valLiked]}>{formatCount(count)}</Text>
-          </TouchableOpacity>
-        </View>
-        <TouchableOpacity style={csSt.item} onPress={onCommentsPress} activeOpacity={0.7}>
-          <Icon name="comment" size={16} color={COLORS.white} />
+        <TouchableOpacity style={csSt.likeTap} onPress={handleLike} activeOpacity={0.7}>
+          <Icon name="heart" size={STAT_ICON} color={liked ? '#FF4D6D' : COLORS.white} weight={liked ? 'fill' : 'regular'} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={csSt.likeCountTap}
+          onPress={() => onLikesPress(effective.postId)}
+          activeOpacity={0.7}
+          disabled={count === 0}
+        >
+          <Text style={[csSt.val, liked && csSt.valLiked]}>{formatCount(count)}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={csSt.commentTap}
+          onPress={onCommentsPress}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Comments"
+        >
+          <Icon name="comment" size={STAT_ICON} color={COLORS.white} />
           <Text style={csSt.val}>{formatCount(effective.commentsCount)}</Text>
         </TouchableOpacity>
         {shareable ? (
           <TouchableOpacity
-            style={csSt.item}
+            style={csSt.shareTap}
             onPress={() => setShareOpen(true)}
             activeOpacity={0.7}
-            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
             accessibilityRole="button"
             accessibilityLabel={`Share ${nowPlaying.title}`}
           >
-            <Icon name="share" size={16} color={COLORS.white} />
+            <Icon name="share" size={STAT_ICON} color={COLORS.white} />
           </TouchableOpacity>
         ) : null}
       </View>
@@ -2275,19 +2306,29 @@ function CompactStats({
   );
 }
 
+/** Like / comment / share glyph size. */
+const STAT_ICON = 22;
+/** Height of every tap box in the row — the row is exactly this tall. */
+const STAT_TAP_H = 44;
+/** Padding on the outer side of the heart; the group is pulled back by the same amount. */
+const STAT_EDGE_PAD = 11;
+
 const csSt = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
     paddingHorizontal: 16,
     marginTop: 8,
-    gap: 10,
   },
-  activeGroup: { flexDirection: 'row', alignItems: 'center', gap: 18 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  val: { color: COLORS.white, fontSize: 13, fontWeight: '600', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
+  // No gap: the tap boxes carry the spacing as padding so there is no dead strip
+  // between them. The negative margin keeps the heart where a bare icon would sit.
+  activeGroup: { flexDirection: 'row', alignItems: 'center', marginLeft: -STAT_EDGE_PAD },
+  likeTap: { height: STAT_TAP_H, paddingLeft: STAT_EDGE_PAD, paddingRight: 3, justifyContent: 'center' },
+  likeCountTap: { height: STAT_TAP_H, paddingLeft: 3, paddingRight: 9, justifyContent: 'center' },
+  commentTap: { height: STAT_TAP_H, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  shareTap: { height: STAT_TAP_H, width: STAT_TAP_H, alignItems: 'center', justifyContent: 'center' },
+  val: { color: COLORS.white, fontSize: 14, fontWeight: '600', fontVariant: ['tabular-nums'], textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   valLiked: { color: '#FF4D6D' },
   pill: {
     flexDirection: 'row',
@@ -2390,7 +2431,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.purpleGlow,
   },
   repostBtnLabel: {
-    color: COLORS.purpleLight,
+    color: COLORS.white,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.2,

@@ -18,6 +18,7 @@ import { usePostLike } from '../hooks/usePostLike';
 import { useOriginalLikes } from '../hooks/useOriginalLikes';
 import { fetchAlbumForTrack, removeTrackFromAlbum, addTrackToAlbum, type AlbumForTrack } from '../services/albums';
 import { friendlyErrorMessage } from '../utils/errorMessages';
+import { relativeTimeAgo } from '../utils/commentTime';
 import PostReportModal from './PostReportModal';
 import PostLikersSheet from './PostLikersSheet';
 import LikedByLine from './LikedByLine';
@@ -73,24 +74,6 @@ function formatTime(seconds: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) {return '';}
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) {return `${diffSec}s`;}
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) {return `${m}m`;}
-  const h = Math.floor(m / 60);
-  if (h < 24) {return `${h}h`;}
-  const d = Math.floor(h / 24);
-  if (d < 7) {return `${d}d`;}
-  const w = Math.floor(d / 7);
-  if (w < 4) {return `${w}w`;}
-  const mo = Math.floor(d / 30);
-  if (mo < 12) {return `${mo}mo`;}
-  return `${Math.floor(d / 365)}y`;
 }
 
 function avatarInitials(author: { displayName: string | null; username: string }): string {
@@ -609,7 +592,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
                   @{headerAuthor.username}
                 </Text>
                 <Text style={styles.timeDot}>·</Text>
-                <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+                <Text style={styles.timeText}>{relativeTimeAgo(post.createdAt)}</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -749,7 +732,7 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
                 @{headerAuthor.username}
               </Text>
               <Text style={styles.timeDot}>·</Text>
-              <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+              <Text style={styles.timeText}>{relativeTimeAgo(post.createdAt)}</Text>
             </View>
           </View>
         </TouchableOpacity>

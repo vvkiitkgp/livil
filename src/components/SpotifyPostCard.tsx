@@ -11,6 +11,7 @@ import { artistLine, useSpotifyAvailability, useSpotifyTrack } from '../services
 import { useOpenInSpotify } from '../hooks/useOpenInSpotify';
 import { useOpenProfile } from '../hooks/useOpenProfile';
 import { friendlyErrorMessage } from '../utils/errorMessages';
+import { relativeTimeAgo } from '../utils/commentTime';
 import { supabase } from '../../lib/supabase';
 import type { RootStackParamList } from '../navigation/types';
 import PostReportModal from './PostReportModal';
@@ -52,23 +53,6 @@ import Scrim from './Scrim';
  *  - "Repost this song" (in ⋯) opens the Spotify repost screen with this song LOCKED in.
  *    The header keeps only "+ Friend" (non-friends) and ⋯, so the name is never squeezed out.
  */
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) {return '';}
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) {return `${diffSec}s`;}
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) {return `${m}m`;}
-  const h = Math.floor(m / 60);
-  if (h < 24) {return `${h}h`;}
-  const d = Math.floor(h / 24);
-  if (d < 7) {return `${d}d`;}
-  const w = Math.floor(d / 7);
-  if (w < 4) {return `${w}w`;}
-  const mo = Math.floor(d / 30);
-  if (mo < 12) {return `${mo}mo`;}
-  return `${Math.floor(d / 365)}y`;
-}
 
 function formatCount(n: number): string {
   if (n < 1000) {return String(n);}
@@ -211,7 +195,7 @@ function SpotifyPostCard({ post, onCommentsPress, onDeleted, fullCaption }: Post
             <View style={styles.handleRow}>
               <Text style={styles.handleText} numberOfLines={1}>@{author.username}</Text>
               <Text style={styles.timeDot}>·</Text>
-              <Text style={styles.timeText}>{relativeTime(post.createdAt)}</Text>
+              <Text style={styles.timeText}>{relativeTimeAgo(post.createdAt)}</Text>
             </View>
           </View>
         </TouchableOpacity>

@@ -14,6 +14,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { feedPostToNowPlaying, type FeedPost } from '../services/posts';
 import { useSpotifyTrack } from '../services/spotify';
 import { haptics } from '../utils/haptics';
+import { relativeTimeAgo } from '../utils/commentTime';
 import { SPOTIFY_GREEN } from './spotifyLogoArtwork';
 import { SpotifyLogo } from './SpotifyLogo';
 
@@ -29,24 +30,6 @@ function formatCount(n: number): string {
   if (n < 1000) {return String(n);}
   if (n < 1_000_000) {return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0).replace(/\.0$/, '')}k`;}
   return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
-}
-
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) {return '';}
-  const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
-  if (diffSec < 60) {return 'just now';}
-  const m = Math.floor(diffSec / 60);
-  if (m < 60) {return `${m}m ago`;}
-  const h = Math.floor(m / 60);
-  if (h < 24) {return `${h}h ago`;}
-  const d = Math.floor(h / 24);
-  if (d < 7) {return `${d}d ago`;}
-  const w = Math.floor(d / 7);
-  if (w < 4) {return `${w}w ago`;}
-  const mo = Math.floor(d / 30);
-  if (mo < 12) {return `${mo}mo ago`;}
-  return `${Math.floor(d / 365)}y ago`;
 }
 
 /**
@@ -129,7 +112,7 @@ function LivilGridCard({ post, plays }: { post: FeedPost; plays?: number | null 
   const isRepost = post.kind === 'repost';
   const subtitle = isRepost
     ? (post.originalAuthor?.displayName ?? post.originalAuthor?.username ?? '')
-    : relativeTime(post.createdAt);
+    : relativeTimeAgo(post.createdAt);
   const shownPlays = !isRepost && plays != null && plays > 0 ? plays : 0;
 
   const handlePress = useCallback(() => {

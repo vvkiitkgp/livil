@@ -17,3 +17,9 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   if (mo < 12) { return `${mo}mo`; }
   return `${Math.floor(d / 365)}y`;
 }
+
+/** The time on a post card: "just now", then "5m ago", "7h ago", "1d ago", "1w ago"… */
+export function relativeTimeAgo(iso: string, now: number = Date.now()): string {
+  const t = relativeTime(iso, now);
+  return t === '' || t === 'just now' ? t : `${t} ago`;
+}

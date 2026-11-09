@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-602 TypeScript file(s) under `src/`, 119,530 lines.
+602 TypeScript file(s) under `src/`, 119,551 lines.
 
 ## Size hotspots
 
@@ -28,9 +28,9 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 3253 |
 | `src/screens/main/UploadScreen.tsx` | 2596 |
-| `src/components/FullScreenPlayer.tsx` | 2446 |
+| `src/components/FullScreenPlayer.tsx` | 2487 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/components/PostCard.tsx` | 1528 |
+| `src/components/PostCard.tsx` | 1511 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
@@ -191,20 +191,20 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,050 lines.
+191 file(s), 37,057 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2446 |
-| `src/components/PostCard.tsx` | 1528 |
+| `src/components/FullScreenPlayer.tsx` | 2487 |
+| `src/components/PostCard.tsx` | 1511 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 1083 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |
-| `src/components/SpotifyPostCard.tsx` | 482 |
 | `src/components/MediaPlayer.tsx` | 468 |
+| `src/components/SpotifyPostCard.tsx` | 466 |
 | `src/components/QueueList.tsx` | 425 |
 | `src/components/ChatSongPicker.tsx` | 421 |
 | `src/components/DetailView.tsx` | 411 |
@@ -213,8 +213,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/Icon.tsx` | 374 |
 | `src/components/SharePostSheet.tsx` | 372 |
 | `src/components/CopyrightMatchModal.tsx` | 370 |
-| `src/components/PostGridCard.tsx` | 362 |
 | `src/components/guide/primitives.tsx` | 354 |
+| `src/components/PostGridCard.tsx` | 345 |
 | `src/components/PostLikersSheet.tsx` | 330 |
 | `src/components/ActivityBubble.tsx` | 324 |
 | `src/components/CommentItem.tsx` | 321 |
@@ -319,6 +319,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/CommentGifCard.test.tsx` | 100 |
 | `src/components/AddBadge.tsx` | 99 |
 | `src/components/ProgressiveImage.tsx` | 99 |
+| `src/components/Scrim.tsx` | 99 |
 | `src/components/CommentGifCard.tsx` | 98 |
 | `src/components/ChatMediaSourceSheet.tsx` | 96 |
 | `src/components/ChatMediaPreview.tsx` | 94 |
@@ -327,7 +328,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/auth/usernameCheck.tsx` | 89 |
 | `src/components/MutualsLine.tsx` | 87 |
-| `src/components/Scrim.tsx` | 83 |
 | `src/components/__tests__/ConfirmActionModal.test.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
 | `src/components/SpotifyLogo.tsx` | 82 |
@@ -595,7 +595,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-129 file(s), 13,238 lines.
+129 file(s), 13,252 lines.
 
 | File | Lines |
 |---|---:|
@@ -704,6 +704,7 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/retryOnce.test.ts` | 35 |
 | `src/utils/realtimeEpoch.ts` | 34 |
 | `src/utils/__tests__/avoidRepeatTop.test.ts` | 31 |
+| `src/utils/__tests__/commentTime.test.ts` | 31 |
 | `src/utils/__tests__/zoomMath.test.ts` | 31 |
 | `src/utils/__tests__/audioDevices.test.ts` | 30 |
 | `src/utils/returningListener.ts` | 30 |
@@ -715,13 +716,12 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/swipeBack.test.ts` | 27 |
 | `src/utils/audioClean/index.ts` | 27 |
 | `src/utils/chatCopy.ts` | 26 |
+| `src/utils/commentTime.ts` | 26 |
 | `src/utils/__tests__/chatGif.test.ts` | 25 |
 | `src/utils/__tests__/likedBy.test.ts` | 25 |
-| `src/utils/__tests__/commentTime.test.ts` | 23 |
 | `src/utils/__tests__/playbackErrors.test.ts` | 23 |
 | `src/utils/avoidRepeatTop.ts` | 23 |
 | `src/utils/friendOrder.ts` | 21 |
-| `src/utils/commentTime.ts` | 20 |
 | `src/utils/likeCount.ts` | 20 |
 | `src/utils/likedBy.ts` | 20 |
 | `src/utils/retryOnce.ts` | 17 |
