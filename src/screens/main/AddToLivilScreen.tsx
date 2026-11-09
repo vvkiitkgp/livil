@@ -70,7 +70,7 @@ export default function AddToLivilScreen() {
         {__DEV__ && (
           <Option
             icon="mic"
-            title="Record"
+            title="Create"
             body="Sing it, Magic Tune it, add a beat."
             onPress={() => navigation.push('Studio')}
           />

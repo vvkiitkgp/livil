@@ -80,6 +80,12 @@ describe('draft file', () => {
     expect(parseDraftFile(JSON.stringify(old))?.project.masterVolume).toBe(1);
   });
 
+  it('opens a draft saved with reverb on with it off (Reverb left the Editor), settings kept', () => {
+    const wet = { ...project, voices: project.voices.map(v => ({ ...v, fx: { pitch: 3, reverb: { on: true, size: 0.8, mix: 0.4 } } })) };
+    const back = parseDraftFile(JSON.stringify(toDraftFile(wet, meta).file));
+    expect(back?.project.voices.map(v => v.fx)).toEqual(wet.voices.map(() => ({ pitch: 3, reverb: { on: false, size: 0.8, mix: 0.4 } })));
+  });
+
   it('refuses a draft that points outside its folder or is from another version', () => {
     const { file } = toDraftFile(project, meta);
     const evil = JSON.parse(JSON.stringify(file));

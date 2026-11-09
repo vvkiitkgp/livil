@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import SheetModal, { SheetScrollView } from '../../components/SheetModal';
 import { Icon } from '../../components/Icon';
 import { COLORS } from '../../theme/colors';
@@ -15,50 +15,17 @@ type Props = {
   playing: boolean;
   onTogglePlay: () => void;
   /**
-   * Every change. Reverb applies live; a pitch change arrives once, when the finger lifts,
-   * with `restart` — the shifted voice is set up as playback (re)starts.
+   * A pitch change, once, when the finger lifts — with `restart`: the shifted voice is set up
+   * as playback (re)starts.
    */
   onFx: (fx: VoiceFx, restart: boolean) => void;
 };
 
-function Card({ title, body, on, onToggle, children }: {
-  title: string;
-  body: string;
-  on: boolean;
-  onToggle: (on: boolean) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={[styles.card, on && styles.cardOn]}>
-      <View style={styles.cardHead}>
-        <View style={styles.cardText}>
-          <Text style={styles.cardTitle}>{title}</Text>
-          <Text style={styles.cardBody}>{body}</Text>
-        </View>
-        <Switch
-          value={on}
-          onValueChange={onToggle}
-          trackColor={{ false: COLORS.inputBg, true: COLORS.purple }}
-          thumbColor={COLORS.white}
-          ios_backgroundColor={COLORS.inputBg}
-          accessibilityLabel={title}
-        />
-      </View>
-      {on && <View style={styles.controls}>{children}</View>}
-    </View>
-  );
-}
-
-function Row({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <StudioSlider compact value={value} onChange={onChange} accessibilityLabel={label} style={styles.rowSlider} />
-    </View>
-  );
-}
-
-/** Pitch and reverb for one voice. */
+/**
+ * Pitch for one voice. (Still "EffectsSheet": it held Reverb too until 2026-11-09, when the
+ * owner had it removed as not working. The engine can still play a reverb; nothing switches
+ * one on, and drafts saved with it on open with it off.)
+ */
 export function EffectsSheet({ visible, onClose, name, fx: liveFx, playing, onTogglePlay, onFx }: Props) {
   // Keep showing the last voice while the sheet slides away after it's closed.
   const last = useRef({ fx: liveFx, name });
@@ -68,7 +35,6 @@ export function EffectsSheet({ visible, onClose, name, fx: liveFx, playing, onTo
   const [pitch, setPitch] = useState(fx?.pitch ?? 0);
   useEffect(() => { if (fx) setPitch(fx.pitch); }, [fx]);
   if (!fx) return null;
-  const setReverb = (patch: Partial<VoiceFx['reverb']>) => onFx({ ...fx, reverb: { ...fx.reverb, ...patch } }, false);
   const commitPitch = (v: number) => {
     const p = Math.round(v);
     setPitch(p);
@@ -82,7 +48,7 @@ export function EffectsSheet({ visible, onClose, name, fx: liveFx, playing, onTo
       halfShare={0.6}
       header={
         <View style={styles.header}>
-          <Text style={styles.title}>{`Effects · ${liveFx ? name : last.current.name}`}</Text>
+          <Text style={styles.title}>{`Pitch · ${liveFx ? name : last.current.name}`}</Text>
           <Pressable onPress={onTogglePlay} style={styles.play} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'}>
             <Icon name={playing ? 'pause' : 'play'} size={18} color={COLORS.purpleNeon} weight="fill" />
           </Pressable>
@@ -118,11 +84,6 @@ export function EffectsSheet({ visible, onClose, name, fx: liveFx, playing, onTo
             </Pressable>
           )}
         </View>
-
-        <Card title="Reverb" body="Sing in a room, a hall, or a cathedral" on={fx.reverb.on} onToggle={on => setReverb({ on })}>
-          <Row label="Room" value={fx.reverb.size} onChange={v => setReverb({ size: v })} />
-          <Row label="Level" value={fx.reverb.mix} onChange={v => setReverb({ mix: v })} />
-        </Card>
       </SheetScrollView>
     </SheetModal>
   );
@@ -139,7 +100,6 @@ const styles = StyleSheet.create({
   cardText: { flex: 1, gap: 2 },
   cardTitle: { color: COLORS.white, fontSize: 15, fontWeight: '700' },
   cardBody: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 16 },
-  controls: { gap: 6 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 34 },
   rowLabel: { width: 60, color: COLORS.textSecondary, fontSize: 12, fontWeight: '700' },
   rowSlider: { flex: 1 },
