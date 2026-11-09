@@ -48,6 +48,29 @@ describe('pitch detection', () => {
     const track = await detectPitch(tone(220, 1, 48000), 48000, undefined, 0);
     expect(Math.abs(medianVoiced(track.f0) - 220) / 220).toBeLessThan(0.01);
   });
+
+  it('still finds a high note (880 Hz), close to the low-pass', async () => {
+    const track = await detectPitch(tone(880, 1, 48000), 48000, undefined, 0);
+    expect(Math.abs(medianVoiced(track.f0) - 880) / 880).toBeLessThan(0.01);
+  });
+
+  // A bright, hissy phone mic (OnePlus 7T, 2026-11-10): the note is clear, but energy at
+  // 3–5 kHz hid it and Magic Tune's graph came up empty.
+  it('finds the note under mic hiss', async () => {
+    const x = tone(180, 1, 48000);
+    let seed = 7;
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; };
+    // Forty unrelated partials between 3 and 5 kHz, about half as loud as the voice.
+    for (let p = 0; p < 40; p++) {
+      const w = (2 * Math.PI * (3000 + 2000 * rand())) / 48000;
+      const phase = 2 * Math.PI * rand();
+      for (let i = 0; i < x.length; i++) x[i] += 0.035 * Math.sin(w * i + phase);
+    }
+    const track = await detectPitch(x, 48000, undefined, 0);
+    const voiced = Array.from(track.f0).filter(v => v > 0).length;
+    expect(voiced / track.f0.length).toBeGreaterThan(0.9);
+    expect(Math.abs(medianVoiced(track.f0) - 180) / 180).toBeLessThan(0.01);
+  });
 });
 
 describe('keys and snapping', () => {

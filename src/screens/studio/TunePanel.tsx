@@ -135,6 +135,23 @@ export function TunePanel({ engine, take, title, editing, onBack, onNext }: Prop
     onNext({ base: b, tuned: null, tuneOn: false, choice: { key: null, strength, clean: cleanOn, cleanVersion: CLEAN_VERSION } });
   }, [baseFor, cleanOn, strength, onNext]);
 
+  /**
+   * Next / Keep it raw instead. Opening the Editor blocks the JS thread for a moment (seconds
+   * on an old phone), so the tapped button shows its spinner first: without it the screen
+   * looked stuck. A ref guards it, because taps queue up while the phone is busy.
+   */
+  const leavingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [leaving, setLeaving] = useState<'tuned' | 'raw' | null>(null);
+  useEffect(() => () => { if (leavingRef.current) clearTimeout(leavingRef.current); }, []);
+  const finish = useCallback((tuneOn: boolean) => {
+    if (leavingRef.current) return;
+    stopPreview();
+    setLeaving(tuneOn ? 'tuned' : 'raw');
+    const result = { base: base.current, tuned: applied?.tuned ?? null, tuneOn, choice: { key, strength, clean: cleanOn, cleanVersion: CLEAN_VERSION } };
+    // Let the spinner paint before the Editor's first render takes the thread.
+    leavingRef.current = setTimeout(() => onNext(result), 50);
+  }, [stopPreview, applied, key, strength, cleanOn, onNext]);
+
   const playFrom = useCallback(async (from: number) => {
     const duration = take.samples.length / take.sampleRate;
     const start = from >= duration - 0.05 ? 0 : from;
@@ -327,8 +344,8 @@ export function TunePanel({ engine, take, title, editing, onBack, onNext }: Prop
         )}
         {phase === 'ready' && (
           <>
-            <Button label={editing ? 'Done' : 'Next'} size="lg" fullWidth onPress={() => { stopPreview(); onNext({ base: base.current, tuned: applied?.tuned ?? null, tuneOn: true, choice: { key, strength, clean: cleanOn, cleanVersion: CLEAN_VERSION } }); }} />
-            <Button label="Keep it raw instead" variant="ghost" onPress={() => { stopPreview(); onNext({ base: base.current, tuned: applied?.tuned ?? null, tuneOn: false, choice: { key, strength, clean: cleanOn, cleanVersion: CLEAN_VERSION } }); }} />
+            <Button label={editing ? 'Done' : 'Next'} size="lg" fullWidth busy={leaving === 'tuned'} disabled={leaving === 'raw'} onPress={() => finish(true)} />
+            <Button label="Keep it raw instead" variant="ghost" busy={leaving === 'raw'} disabled={leaving === 'tuned'} onPress={() => finish(false)} />
           </>
         )}
       </View>
