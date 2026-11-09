@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
 import { AudioManager } from 'react-native-audio-api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../components/Button';
@@ -33,6 +33,10 @@ type Props = {
 };
 
 const BARS = 40;
+/** The level meter at full height. On a short phone it gives up height first, down to METER_MIN. */
+const METER_H = 170;
+const METER_MIN = 56;
+type Part = 'room' | 'clock' | 'status' | 'cards';
 const CANCELLED = 'Recording was cancelled.';
 
 export type RecordedTake = FinishedTake;
@@ -267,6 +271,21 @@ export function RecordPanel(props: Props) {
 
   useEffect(() => () => { if (engine.isRecording) engine.stopRecording(); }, [engine]);
 
+  // Short phones: everything between the mic picker and the BPM controls has to fit the room
+  // that is left, so the Record button never leaves the screen. The meter shrinks first; what
+  // still does not fit scrolls, resting at the bottom where the newest card is.
+  const scroll = useRef<ScrollView>(null);
+  const sizes = useRef<Record<Part, number>>({ room: 0, clock: 0, status: 0, cards: 0 });
+  const [meterH, setMeterH] = useState(METER_H);
+  const measure = useMemo(() => {
+    const on = (part: Part) => (e: LayoutChangeEvent) => {
+      sizes.current[part] = e.nativeEvent.layout.height;
+      const { room, clock, status, cards } = sizes.current;
+      if (room > 0) setMeterH(Math.max(METER_MIN, Math.min(METER_H, Math.floor(room - clock - status - cards))));
+    };
+    return { room: on('room'), clock: on('clock'), status: on('status'), cards: on('cards') };
+  }, []);
+
   const duration = take ? take.samples.length / take.sampleRate : elapsed;
 
   // Fast or slow against the tempo that was set. Auto BPM has none to be off from.
@@ -309,120 +328,142 @@ export function RecordPanel(props: Props) {
       </View>
       <MicPicker engine={engine} disabled={recording || counting} />
 
-      <View style={styles.clockWrap}>
-        {beat?.countIn != null ? (
-          <Text style={[styles.clock, { color: COLORS.purpleNeon }]} accessibilityLiveRegion="assertive">{String(beat.countIn)}</Text>
-        ) : (
-          <Text style={styles.clock}>{formatClock(duration, true)}</Text>
-        )}
-        <Text style={styles.sub}>{`of ${formatClock(MAX_TRACK_SECONDS)} · Take ${takeNumber}`}</Text>
-      </View>
-
-      <View style={styles.meter} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {levels.map((l, i) => (
-          <View
-            key={i}
-            style={[styles.bar, {
-              height: 8 + l * 150,
-              backgroundColor: recording ? (i % 7 === 0 ? COLORS.purpleNeon : COLORS.purple) : COLORS.purpleDeep,
-            }]}
-          />
-        ))}
-      </View>
-
-      <View style={styles.status}>
-        {processing ? (
-          <Text style={styles.statusText}>Removing the click from your voice…</Text>
-        ) : counting ? (
-          <Text style={styles.statusText}>Get ready… recording starts after the count</Text>
-        ) : recording ? (
-          <View style={styles.row}>
-            <View style={styles.dot} />
-            <Text style={styles.statusText}>Listening… tap the button to stop</Text>
-          </View>
-        ) : take ? (
-          <Pressable
-            onPress={() => void toggleListen()}
-            style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
-            accessibilityRole="button"
-            accessibilityLabel={listening ? 'Stop listening' : 'Listen to this take'}
-          >
-            <Icon name={listening ? 'pause' : 'play'} size={16} color={COLORS.purpleNeon} weight="fill" />
-            <Text style={styles.listenText}>
-              {listening ? `Listening · ${formatClock(Math.min(listenSec, duration))} / ${formatClock(duration)}` : `Listen to take ${takeNumber} · ${formatClock(duration)}`}
-            </Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.statusText}>Tap the red button to start</Text>
-        )}
-      </View>
-
-      {/* Auto BPM has no tempo to count yet: the number and the dots keep their room, unseen. */}
-      <Text style={[styles.beatBpm, auto && styles.unseen]} accessibilityElementsHidden={auto}>{`${bpm} BPM`}</Text>
-      <View style={[styles.beats, auto && styles.unseen]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {[0, 1, 2, 3].map(i => {
-          const on = !!beat && (beat.countIn != null ? beat.countIn - 1 === i : beat.beat === i);
-          return <View key={i} style={[styles.beatDot, i === 0 && styles.beatDotOne, on && (i === 0 ? styles.beatDotAccentOn : styles.beatDotOn)]} />;
-        })}
-      </View>
-      <Text style={[styles.liveTempo, liveColor != null && { color: liveColor }]} accessibilityLiveRegion="polite">
-        {liveLine}
-      </Text>
-
-      <View style={{ flex: 1 }} />
-
-      {takeNumber === 1 && !auto && !take && !recording && !counting && (
-        <View style={styles.bpmTip} accessibilityRole="text">
-          <Icon name="metronome" size={16} color={COLORS.purpleLight} />
-          <Text style={styles.bpmTipText}>
-            <Text style={styles.bpmTipStrong}>Set the BPM before you record. </Text>
-            Beats and loops line up to it, so pick your song's tempo now. Changing it later won't speed up or slow down your voice.
-            {' '}Not sure of it? Switch to Auto BPM.
-          </Text>
-        </View>
-      )}
-      {sungCard && (
-        <View style={styles.sungCard}>
-          <View style={styles.sungRow}>
-            <Icon name={sungIsSet || sungOnTempo ? 'check' : 'metronome'} size={16} color={sungIsSet || sungOnTempo ? COLORS.success : COLORS.purpleLight} />
-            <Text style={styles.bpmTipText}>
-              <Text style={styles.bpmTipStrong}>
-                {sungIsSet
-                  ? `Beats now follow your voice at ${sungCard.bpm} BPM. `
-                  : sungOnTempo
-                    ? `You stayed on tempo at ${bpm} BPM. `
-                    : sungCard.sure
-                      ? `You sang at about ${sungCard.bpm} BPM. `
-                      : `You sang at about ${sungCard.bpm} BPM for most of this take. `}
-              </Text>
-              {sungIsSet || sungOnTempo
-                ? ''
-                : 'Use it, and beats and instruments line up with your voice. Your take slides a fraction of a second to sit on the beat.'}
-              {!sungOnTempo && !sungCard.steady && ` Your tempo moved between ${sungCard.low} and ${sungCard.high}, so beats may slip later in the song. Singing with the click keeps it steady.`}
-              {canStartOnBar && (barOffset < 0
-                ? ` Crop the first ${barAmount} of silence and your first line starts on the first beat of a bar. Nothing you sang is cut.`
-                : ` Add ${barAmount} of silence in front and your first line starts on the first beat of a bar. Nothing is cut.`)}
-              {sungIsSet && onBar && ` Your first line starts on the first beat of a bar (${barOffset < 0 ? `first ${barAmount} cropped` : `${barAmount} of silence added`}).`}
-            </Text>
-          </View>
-          {!sungIsSet && !sungOnTempo && (
-            <Button label={`Use ${sungCard.bpm} BPM`} onPress={applySungTempo} size="sm" fullWidth haptic="impact" />
+      <ScrollView
+        ref={scroll}
+        style={styles.middle}
+        contentContainerStyle={styles.middleContent}
+        onLayout={measure.room}
+        onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+      >
+        <View style={styles.clockWrap} onLayout={measure.clock}>
+          {beat?.countIn != null ? (
+            <Text style={[styles.clock, { color: COLORS.purpleNeon }]} accessibilityLiveRegion="assertive">{String(beat.countIn)}</Text>
+          ) : (
+            <Text style={styles.clock}>{formatClock(duration, true)}</Text>
           )}
-          {canStartOnBar && <Button label={barOffset < 0 ? `Crop the first ${barAmount}` : `Add ${barAmount} in front`} onPress={() => startOnBar(true)} size="sm" fullWidth haptic="impact" />}
-          {sungIsSet && onBar && <Button label="Undo" onPress={() => startOnBar(false)} size="sm" variant="secondary" fullWidth />}
+          <Text style={styles.sub}>{`of ${formatClock(MAX_TRACK_SECONDS)} · Take ${takeNumber}`}</Text>
         </View>
-      )}
-      {auto && noTempo && take && !processing && (
-        <View style={styles.sungCard}>
-          <View style={styles.sungRow}>
-            <Icon name="info" size={16} color={COLORS.purpleLight} />
-            <Text style={styles.bpmTipText}>
-              <Text style={styles.bpmTipStrong}>No steady tempo found in this take. </Text>
-              {`Beats stay at ${bpm} BPM. Sing a little longer, or switch to Set BPM.`}
-            </Text>
+
+        <View style={[styles.meter, { height: meterH }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          {levels.map((l, i) => (
+            <View
+              key={i}
+              style={[styles.bar, {
+                height: Math.max(4, (8 + l * 150) * (meterH / METER_H)),
+                backgroundColor: recording ? (i % 7 === 0 ? COLORS.purpleNeon : COLORS.purple) : COLORS.purpleDeep,
+              }]}
+            />
+          ))}
+        </View>
+
+        <View onLayout={measure.status}>
+          <View style={styles.status}>
+            {processing ? (
+              <Text style={styles.statusText}>Removing the click from your voice…</Text>
+            ) : counting ? (
+              <Text style={styles.statusText}>Get ready… recording starts after the count</Text>
+            ) : recording ? (
+              <View style={styles.row}>
+                <View style={styles.dot} />
+                <Text style={styles.statusText}>Listening… tap the button to stop</Text>
+              </View>
+            ) : take ? (
+              <Pressable
+                onPress={() => void toggleListen()}
+                style={({ pressed }) => [styles.listen, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel={listening ? 'Stop listening' : 'Listen to this take'}
+              >
+                <Icon name={listening ? 'pause' : 'play'} size={16} color={COLORS.purpleNeon} weight="fill" />
+                <Text style={styles.listenText}>
+                  {listening ? `Listening · ${formatClock(Math.min(listenSec, duration))} / ${formatClock(duration)}` : `Listen to take ${takeNumber} · ${formatClock(duration)}`}
+                </Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.statusText}>Tap the red button to start</Text>
+            )}
           </View>
+
+          {/* Auto BPM has no tempo to count yet: the number and the dots keep their room, unseen,
+              until there is a take. Then the room goes to the tempo card. */}
+          {!(auto && take) && (
+            <>
+              <Text style={[styles.beatBpm, auto && styles.unseen]} accessibilityElementsHidden={auto}>{`${bpm} BPM`}</Text>
+              <View style={[styles.beats, auto && styles.unseen]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                {[0, 1, 2, 3].map(i => {
+                  const on = !!beat && (beat.countIn != null ? beat.countIn - 1 === i : beat.beat === i);
+                  return <View key={i} style={[styles.beatDot, i === 0 && styles.beatDotOne, on && (i === 0 ? styles.beatDotAccentOn : styles.beatDotOn)]} />;
+                })}
+              </View>
+            </>
+          )}
+          {!take && (
+            <Text style={[styles.liveTempo, liveColor != null && { color: liveColor }]} accessibilityLiveRegion="polite">
+              {liveLine}
+            </Text>
+          )}
         </View>
-      )}
+
+        <View style={{ flex: 1 }} />
+
+        <View onLayout={measure.cards}>
+          {takeNumber === 1 && !auto && !take && !recording && !counting && (
+            <View style={styles.bpmTip} accessibilityRole="text">
+              <Icon name="metronome" size={16} color={COLORS.purpleLight} />
+              <Text style={styles.bpmTipText}>
+                <Text style={styles.bpmTipStrong}>Set the BPM before you record. </Text>
+                Beats and loops line up to it, so pick your song's tempo now. Changing it later won't speed up or slow down your voice.
+                {' '}Not sure of it? Switch to Auto BPM.
+              </Text>
+            </View>
+          )}
+          {sungCard && (
+            <View style={styles.sungCard}>
+              <View style={styles.sungRow}>
+                <Icon name={sungIsSet || sungOnTempo ? 'check' : 'metronome'} size={16} color={sungIsSet || sungOnTempo ? COLORS.success : COLORS.purpleLight} />
+                <Text style={styles.bpmTipText}>
+                  <Text style={styles.bpmTipStrong}>
+                    {sungIsSet
+                      ? `Beats now follow your voice at ${sungCard.bpm} BPM. `
+                      : sungOnTempo
+                        ? `You stayed on tempo at ${bpm} BPM. `
+                        : sungCard.sure
+                          ? `You sang at about ${sungCard.bpm} BPM. `
+                          : `You sang at about ${sungCard.bpm} BPM for most of this take. `}
+                  </Text>
+                  {sungIsSet || sungOnTempo
+                    ? ''
+                    : 'Use it, and beats and instruments line up with your voice. Your take slides a fraction of a second to sit on the beat.'}
+                  {!sungOnTempo && !sungCard.steady && ` Your tempo moved between ${sungCard.low} and ${sungCard.high}, so beats may slip later in the song. Singing with the click keeps it steady.`}
+                  {canStartOnBar && (barOffset < 0
+                    ? ` Crop the first ${barAmount} of silence and your first line starts on the first beat of a bar. Nothing you sang is cut.`
+                    : ` Add ${barAmount} of silence in front and your first line starts on the first beat of a bar. Nothing is cut.`)}
+                  {sungIsSet && onBar && ` Your first line starts on the first beat of a bar (${barOffset < 0 ? `first ${barAmount} cropped` : `${barAmount} of silence added`}).`}
+                </Text>
+              </View>
+              {!sungIsSet && !sungOnTempo && (
+                <Button label={`Use ${sungCard.bpm} BPM`} onPress={applySungTempo} size="sm" fullWidth haptic="impact" />
+              )}
+              {canStartOnBar && <Button label={barOffset < 0 ? `Crop the first ${barAmount}` : `Add ${barAmount} in front`} onPress={() => startOnBar(true)} size="sm" fullWidth haptic="impact" />}
+              {sungIsSet && onBar && <Button label="Undo" onPress={() => startOnBar(false)} size="sm" variant="secondary" fullWidth />}
+            </View>
+          )}
+          {auto && noTempo && take && !processing && (
+            <View style={styles.sungCard}>
+              <View style={styles.sungRow}>
+                <Icon name="info" size={16} color={COLORS.purpleLight} />
+                <Text style={styles.bpmTipText}>
+                  <Text style={styles.bpmTipStrong}>No steady tempo found in this take. </Text>
+                  {`Beats stay at ${bpm} BPM. Sing a little longer, or switch to Set BPM.`}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+      </ScrollView>
 
       {!overBacking && (
         <View style={[styles.modes, busy && styles.dim]} pointerEvents={busy ? 'none' : 'auto'} accessibilityRole="radiogroup">
@@ -518,10 +559,12 @@ const styles = StyleSheet.create({
   headerSide: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   title: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
   skip: { color: COLORS.purpleLight, fontSize: 15, fontWeight: '600' },
-  clockWrap: { alignItems: 'center', gap: 6, marginTop: 20 },
+  middle: { flex: 1 },
+  middleContent: { flexGrow: 1 },
+  clockWrap: { alignItems: 'center', gap: 6, paddingTop: 20, paddingBottom: 16 },
   clock: { color: COLORS.white, fontSize: 56, fontWeight: '700', letterSpacing: -1, fontVariant: ['tabular-nums'] },
   sub: { color: COLORS.textSecondary, fontSize: 13 },
-  meter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, height: 170, marginTop: 16 },
+  meter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 },
   bar: { width: 5, borderRadius: 3 },
   status: { alignItems: 'center', marginTop: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },

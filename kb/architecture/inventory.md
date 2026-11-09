@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-606 TypeScript file(s) under `src/`, 120,680 lines.
+606 TypeScript file(s) under `src/`, 120,792 lines.
 
 ## Size hotspots
 
@@ -48,9 +48,10 @@ reading alone (Constitution P28).
 | `src/screens/studio/StudioScreen.tsx` | 685 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
+| `src/screens/studio/RecordPanel.tsx` | 623 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 23 file(s) over the threshold against **39 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 24 file(s) over the threshold against **39 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -109,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,052 lines.
+77 file(s), 36,112 lines.
 
 | File | Lines |
 |---|---:|
@@ -129,17 +130,17 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/StudioScreen.tsx` | 685 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
+| `src/screens/studio/RecordPanel.tsx` | 623 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
-| `src/screens/studio/RecordPanel.tsx` | 580 |
 | `src/screens/studio/SynthSheet.tsx` | 483 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
 | `src/screens/studio/EditorPanel.tsx` | 400 |
-| `src/screens/studio/TunePanel.tsx` | 382 |
+| `src/screens/studio/TunePanel.tsx` | 399 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 359 |
 | `src/screens/main/EditPlaylistScreen.tsx` | 336 |
@@ -597,7 +598,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-131 file(s), 13,906 lines.
+131 file(s), 13,958 lines.
 
 | File | Lines |
 |---|---:|
@@ -610,15 +611,16 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/captionFit.test.ts` | 226 |
 | `src/utils/__tests__/playTracker.test.ts` | 226 |
 | `src/utils/searchRanking.ts` | 219 |
+| `src/utils/__tests__/magicTune.test.ts` | 218 |
 | `src/utils/captionFit.ts` | 217 |
 | `src/utils/__tests__/searchRanking.test.ts` | 212 |
 | `src/utils/haptics.ts` | 201 |
-| `src/utils/__tests__/magicTune.test.ts` | 195 |
 | `src/utils/__tests__/nowPlayingMetadata.test.ts` | 191 |
 | `src/utils/__tests__/tempo.test.ts` | 190 |
 | `src/utils/audioClean/clickRepair.ts` | 190 |
 | `src/utils/__tests__/shareLinks.test.ts` | 186 |
 | `src/utils/chatLinks.ts` | 184 |
+| `src/utils/magicTune/pitch.ts` | 181 |
 | `src/utils/__tests__/drafts.test.ts` | 174 |
 | `src/utils/audioClean/clickRemover.ts` | 173 |
 | `src/utils/chatTyping.ts` | 171 |
@@ -626,7 +628,6 @@ case the call fails silently wherever its result is discarded.
 | `src/utils/__tests__/chatLinks.test.ts` | 165 |
 | `src/utils/emojiData.ts` | 162 |
 | `src/utils/__tests__/storyPlayback.test.ts` | 152 |
-| `src/utils/magicTune/pitch.ts` | 152 |
 | `src/utils/__tests__/listeningStatus.test.ts` | 147 |
 | `src/utils/listeningStatus.ts` | 147 |
 | `src/utils/uploadRecovery.ts` | 145 |

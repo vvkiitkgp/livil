@@ -28,6 +28,8 @@ const HOP = 160;
 const YIN_THRESHOLD = 0.15;
 /** RMS below this (about −46 dBFS) is treated as silence and not analysed. */
 const SILENCE_RMS = 0.005;
+/** Nothing above MAX_HZ is a fundamental: harmonics, breath and mic hiss. */
+const LOWPASS_HZ = MAX_HZ;
 
 /** Boxcar decimation. Crude, but YIN only needs the fundamental, not a clean spectrum. */
 export function decimate(x: Float32Array, factor: number): Float32Array {
@@ -40,6 +42,31 @@ export function decimate(x: Float32Array, factor: number): Float32Array {
     out[i] = s / factor;
   }
   return out;
+}
+
+/**
+ * Low-pass at LOWPASS_HZ (two Butterworth biquads), in place. YIN scores how exactly the wave
+ * repeats, and a bright or hissy mic buries that under energy at 3–5 kHz: on a OnePlus 7T a
+ * clearly sung note scored 0.25–0.4 against YIN_THRESHOLD and nearly the whole take came back
+ * unvoiced (2026-11-10). Its delay (well under a millisecond) is far below one frame.
+ */
+export function lowpass(a: Float32Array, rate: number): void {
+  const w = (2 * Math.PI * Math.min(LOWPASS_HZ, rate * 0.45)) / rate;
+  const alpha = Math.sin(w) / Math.SQRT2;
+  const cos = Math.cos(w);
+  const b0 = (1 - cos) / 2 / (1 + alpha);
+  const b1 = (1 - cos) / (1 + alpha);
+  const a1 = (-2 * cos) / (1 + alpha);
+  const a2 = (1 - alpha) / (1 + alpha);
+  for (let pass = 0; pass < 2; pass++) {
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (let i = 0; i < a.length; i++) {
+      const x = a[i];
+      const y = b0 * x + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = x; y2 = y1; y1 = y;
+      a[i] = y;
+    }
+  }
 }
 
 /** One YIN estimate for the window starting at `start`; 0 when no period is found. */
@@ -123,7 +150,9 @@ export async function detectPitch(
 ): Promise<PitchTrack> {
   const factor = Math.max(1, Math.floor(sampleRate / ANALYSIS_TARGET_RATE));
   const rate = sampleRate / factor;
-  const a = decimate(x, factor);
+  // An own copy: the low-pass works in place, and `decimate` hands back `x` itself at factor 1.
+  const a = factor > 1 ? decimate(x, factor) : x.slice();
+  lowpass(a, rate);
   const tauMax = Math.ceil(rate / MIN_HZ);
   const diff = new Float32Array(tauMax + 2);
   const frames = Math.max(0, Math.floor((a.length - WINDOW - tauMax - 1) / HOP) + 1);
