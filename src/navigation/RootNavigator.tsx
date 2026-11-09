@@ -24,6 +24,7 @@ import { getSavedSession } from '../services/authStorage';
 import { isFailedRefreshEvent, startupSession } from '../services/session';
 import UploadScreen from '../screens/main/UploadScreen';
 import DraftsScreen from '../screens/studio/DraftsScreen';
+import StudioScreen from '../screens/studio/StudioScreen';
 import RepostScreen from '../screens/main/RepostScreen';
 import AddToLivilScreen from '../screens/main/AddToLivilScreen';
 import SpotifyRepostScreen from '../screens/main/SpotifyRepostScreen';
@@ -90,13 +91,6 @@ import {
 import { clearSpotifyReturnNudge } from '../services/spotifyReturnNudge';
 import { clearAppBadge } from '../services/appBadge';
 import { markSignedInHere } from '../utils/returningListener';
-
-// PROTOTYPE (Record → Magic Tune → Editor): developer builds only. In a release bundle
-// `__DEV__` is the constant false, Metro folds this to `null` before collecting
-// dependencies, and the whole Editor (screens + DSP) is left out of the store app.
-const StudioScreen: React.ComponentType | null = __DEV__
-  ? require('../screens/studio/StudioScreen').default
-  : null;
 
 // iOS presents these as sheets, with no status bar above them, so each screen's header sat right
 // against the sheet's rounded top edge. Android shows them full screen, under the status bar.
@@ -795,18 +789,16 @@ export default function RootNavigator() {
                 animation: 'slide_from_bottom',
               }}
             />
-            {StudioScreen && (
-              <Stack.Screen
-                name="Studio"
-                component={StudioScreen}
-                options={{
-                  presentation: 'modal',
-                  contentStyle: SHEET_CONTENT_STYLE,
-                  gestureEnabled: false,
-                  animation: 'slide_from_bottom',
-                }}
-              />
-            )}
+            <Stack.Screen
+              name="Studio"
+              component={StudioScreen}
+              options={{
+                presentation: 'modal',
+                contentStyle: SHEET_CONTENT_STYLE,
+                gestureEnabled: false,
+                animation: 'slide_from_bottom',
+              }}
+            />
             <Stack.Screen
               name="SpotifyRepost"
               component={SpotifyRepostScreen}

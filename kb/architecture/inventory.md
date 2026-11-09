@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-606 TypeScript file(s) under `src/`, 120,792 lines.
+606 TypeScript file(s) under `src/`, 120,770 lines.
 
 ## Size hotspots
 
@@ -45,10 +45,10 @@ reading alone (Constitution P28).
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 685 |
+| `src/screens/studio/StudioScreen.tsx` | 686 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
-| `src/screens/studio/RecordPanel.tsx` | 623 |
+| `src/screens/studio/RecordPanel.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
 > 24 file(s) over the threshold against **39 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,112 lines.
+77 file(s), 36,098 lines.
 
 | File | Lines |
 |---|---:|
@@ -127,10 +127,10 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 685 |
+| `src/screens/studio/StudioScreen.tsx` | 686 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
-| `src/screens/studio/RecordPanel.tsx` | 623 |
+| `src/screens/studio/RecordPanel.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 | `src/screens/main/GroupInfoScreen.tsx` | 600 |
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
@@ -174,7 +174,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/AddToLivilScreen.tsx` | 163 |
+| `src/screens/main/AddToLivilScreen.tsx` | 161 |
 | `src/screens/studio/renderMix.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/SongTrim.tsx` | 116 |

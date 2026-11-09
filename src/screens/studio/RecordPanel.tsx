@@ -487,18 +487,6 @@ export function RecordPanel(props: Props) {
           <BpmStepper bpm={bpm} onBpm={onBpm} disabled={recording || counting} />
         </View>
       )}
-      {take && !take.clickReport && clickOn && !headphones && (
-        <Text style={styles.debug}>Click remover did not run: no speaker clicks were logged</Text>
-      )}
-      {take?.clickReport && (
-        // PROTOTYPE readout: tells us on a real phone whether the click remover found the
-        // count-in and how much it took out. Remove before the feature ships.
-        <Text style={styles.debug}>
-          {take.clickReport.skipped
-            ? `Click remover skipped: ${take.clickReport.skipped}`
-            : `Click remover: ${take.clickReport.removed} clicks · timing ${take.clickReport.lagMs} ms · learned ${take.clickReport.learned.accent}+${take.clickReport.learned.beat} · −${take.clickReport.reductionDb} dB`}
-        </Text>
-      )}
       <Text style={styles.metroNote}>
         {auto
           ? 'Just sing. Livil finds your tempo and lines the beats and instruments up to your voice.'
@@ -617,6 +605,5 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: COLORS.purple,
   },
   listenText: { color: COLORS.purpleNeon, fontSize: 14, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  debug: { color: COLORS.warning, fontSize: 11, textAlign: 'center', marginBottom: 8, fontVariant: ['tabular-nums'] },
   foot: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', marginTop: 20, marginBottom: 24 }, // see EditorPanel's footer
 });

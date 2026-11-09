@@ -23,7 +23,7 @@ related_adrs: [ADR-0001, ADR-0033, ADR-0034, ADR-0035, ADR-0036]
 
 ## Context
 
-The Editor (`src/screens/studio/`, `__DEV__`-only) sums voices, drums and synths into a master `GainNode`, then a
+The Editor (`src/screens/studio/`, developer-only until 2.2.0) sums voices, drums and synths into a master `GainNode`, then a
 `WaveShaperNode` "limiter" (`softLimitCurve`, `src/utils/audioFx/effects.ts:68-86`), then the destination.
 `renderMix.ts` repeats that chain offline. Its output is encoded to 16-bit FLAC, which becomes the post's only master
 (ADR-0036). The transcoder then derives AAC 256k (ADR-0033), and listeners hear that copy at fixed volume. Nothing

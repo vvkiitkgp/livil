@@ -6,8 +6,8 @@ import type { DraftSummary } from '../screens/studio/draftFormat';
 
 /**
  * The signed-in user's drafts, from this phone. Re-read on every focus, so coming back from the
- * Editor or Upload after a save shows it. Upload drafts only in the store app, while the Editor
- * is a developer-only prototype. Never throws: none → [].
+ * Editor or Upload after a save shows it. Upload drafts and Editor drafts alike. Never throws:
+ * none → [].
  */
 export function useMyDrafts() {
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
@@ -18,7 +18,7 @@ export function useMyDrafts() {
     const me = await getMyUserId().catch(() => null);
     setUserId(me);
     const all = me ? await listDrafts(me) : [];
-    setDrafts(__DEV__ ? all : all.filter(d => d.uploadKind));
+    setDrafts(all);
   }, []);
 
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));

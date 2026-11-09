@@ -59,18 +59,13 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Livil uses the camera so you can take a new photo for your profile picture or an album cover.</string>
-	<!-- REQUIRED even though Livil never records. Apple rejected build 2.0.6 (71)
-	     with ITMS-90683 for its absence: the check is on what the BINARY REFERENCES,
-	     not on what our code calls. react-native-audio-api's AudioSessionManager.mm
-	     calls requestRecordPermission, and it is linked in because we use that
-	     library's standalone decodeAudioData for waveform analysis — never as a
-	     recorder. Apple's own words: "While your app might not use these APIs, a
-	     purpose string is still required."
-	     The prompt this text belongs to will never actually appear, since nothing
-	     requests microphone access — so it says so plainly rather than inventing a
-	     recording feature that does not exist. Removing this re-breaks the upload. -->
+	<!-- Record → Magic Tune → Editor (ADR-0036 §8): the mic is requested on the first Record
+	     tap in the Editor (studioEngine.ts, AudioManager.requestRecordingPermissions) and
+	     nowhere else. Until 2.2.0 nothing recorded and this string said so; it was still
+	     required then (ITMS-90683 rejected 2.0.6 (71) without it, because the linked
+	     react-native-audio-api references the API). Names the one use, per 5.1.1(ii). -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Livil does not record audio. An audio component used to draw track waveforms references the microphone, so iOS requires this notice — you will never be asked for microphone access.</string>
+	<string>Livil uses the microphone only while you are recording a song in the Editor. Nothing is uploaded unless you choose to post it.</string>
 	<!-- Names EVERY use, per guideline 5.1.1(ii): the gallery is opened for a profile
 	     picture (profileService), album and track cover art (albums, mediaPicks), and a
 	     video to upload with its thumbnail (mediaPicks.pickVideoFromGallery). The old text

@@ -129,11 +129,11 @@ export type RootStackParamList = {
   // "+ Post" / Home "+" chooser: upload your own track, or repost from Spotify. Only shown
   // while the server switch is on; otherwise those buttons go straight to Upload.
   AddToLivil: undefined;
-  // Record → Magic Tune → Editor (internal code name "Studio", ADR-0034..0036). PROTOTYPE:
-  // reachable only from the __DEV__ tile on AddToLivil; nothing is saved or posted.
-  /** The Editor (developer builds only). `draftId` reopens a draft saved on this phone. */
+  // Record → Magic Tune → Editor (internal code name "Studio", ADR-0034..0037). Opened by the
+  // "Create" tile on AddToLivil; developer-only until 2.2.0.
+  /** The Editor. `draftId` reopens a draft saved on this phone. */
   Studio: { draftId?: string } | undefined;
-  /** Editor drafts saved on this phone (developer builds only, like Studio). */
+  /** Drafts saved on this phone: uploads and Editor songs. */
   Drafts: undefined;
   // Repost a song. Without params: search Livil + Spotify or paste a Spotify link (a Livil
   // pick replaces this screen with Repost, the clip editor). With

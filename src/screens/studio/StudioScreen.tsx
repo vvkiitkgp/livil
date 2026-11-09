@@ -52,9 +52,10 @@ function defaultDraftTitle(d = new Date()): string {
 type DraftMeta = { id: string; title: string; createdAt: string };
 
 /**
- * Record → Magic Tune → Editor. PROTOTYPE, developer builds only (the "+ Post" tile is
- * __DEV__-gated). Work can be saved as a draft ON THIS PHONE (src/services/drafts.ts,
- * ADR-0036 §9); `route.params.draftId` reopens one. Posting is not built yet.
+ * Record → Magic Tune → Editor. Opened by "Create" on the "+ Post" sheet (developer builds
+ * only from 2026-10-30 until it shipped in 2.2.0). Work can be saved as a draft ON THIS PHONE
+ * (src/services/drafts.ts, ADR-0036 §9); `route.params.draftId` reopens one. Create post
+ * renders the mix and hands it to Upload (ADR-0036).
  *
  * Audio ownership (ADR-0034): on entry the feed player is paused and GlobalAudioPlayer is
  * UNMOUNTED via `setEngineDriving(true)`, so no RNV view holds the iOS session and no

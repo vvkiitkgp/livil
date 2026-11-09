@@ -65,17 +65,15 @@ export default function AddToLivilScreen() {
           }
           onPress={() => navigation.push('SpotifyRepost', undefined)}
         />
-        {/* PROTOTYPE (2026-10-30): Record → Magic Tune → Editor. Developer builds only until
-            Magic Tune is ready to ship (owner: the first release waits for it). */}
-        {__DEV__ && (
-          <Option
-            icon="mic"
-            title="Create"
-            body="Sing it, Magic Tune it, add a beat."
-            onPress={() => navigation.push('Studio')}
-          />
-        )}
-        {(__DEV__ || drafts.length > 0) && (
+        {/* Record → Magic Tune → Editor (ADR-0034..0037). Developer-only from 2026-10-30;
+            shipped to everyone in 2.2.0 (owner, 2026-11-10). */}
+        <Option
+          icon="mic"
+          title="Create"
+          body="Sing it, Magic Tune it, add a beat."
+          onPress={() => navigation.push('Studio')}
+        />
+        {drafts.length > 0 && (
           <Option
             icon="pencilLine"
             title="Drafts"
