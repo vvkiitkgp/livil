@@ -11,13 +11,23 @@ import {
   Platform,
 } from 'react-native';
 import { useKeyboardHandler } from 'react-native-keyboard-controller';
-import { runOnJS } from 'react-native-reanimated';
+import Reanimated, {
+  cancelAnimation,
+  Easing as REasing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { navigationRef } from '../navigation/navigationRef';
+import { navigationRef, useCurrentRouteName } from '../navigation/navigationRef';
+import { isSheetRoute } from '../navigation/sheetRoutes';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
 import { useJamRealtime } from '../contexts/JamRealtimeContext';
@@ -75,6 +85,13 @@ const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
 // The circle shrinks while it sits on the X, so the X's countdown ring shows around it.
 const CIRCLE_ON_X_SCALE = 0.72;
+// The circle's springs (stiffness/damping, mass 1). Converted from the React Native
+// Animated bounciness/speed pairs they replaced, so the motion is unchanged.
+const SPRING_BACK    = { stiffness: 385, damping: 23.4, mass: 1 };  // drag release → rest (was 10/14)
+const SPRING_PRESS   = { stiffness: 682, damping: 23.4, mass: 1 };  // finger down → 1.22× (was 14/28)
+const SPRING_RELEASE = { stiffness: 470, damping: 28.8, mass: 1 };  // finger up → 1× (was 8/18)
+const SPRING_SNAP    = { stiffness: 937, damping: 57.1, mass: 1 };  // onto / off the X, no bounce (was 0/40)
+const SPRING_POP     = { stiffness: 470, damping: 22.8, mass: 1 };  // play/pause glyph pop (was 12/18)
 // Delay (ms) before the pill morphs open, so the FS player opens first and the
 // pill then pops up. Close stays instant (matches the FS collapse).
 const OPEN_MORPH_DELAY = 220;
@@ -236,7 +253,13 @@ export default function FloatingPlayer() {
   // the pill animated OUT visibly for ~200ms — a hacky flash. Gating shouldShow
   // keeps slideAnim parked at hidden throughout, so closing a story reveals the
   // pill only if the user's music is actually being restored.
-  const shouldShow = (!!nowPlaying || !!activeJam) && !isStoryViewerOpen && !isRepostOpen;
+  // A sheet screen (+ Post menu, Upload, Create, Drafts, album/playlist editors…) covers the
+  // player on iPhone, where it is a native layer above the whole app. Android draws it in the
+  // same window, under the player, so the player hides itself while one is the top screen.
+  const topRoute = useCurrentRouteName();
+  const underSheet = Platform.OS === 'android' && isSheetRoute(topRoute);
+  const covered = isStoryViewerOpen || isRepostOpen || underSheet;
+  const shouldShow = (!!nowPlaying || !!activeJam) && !covered;
   useEffect(() => {
     if (shouldShow && !wasVisible.current) {
       wasVisible.current = true;
@@ -297,25 +320,36 @@ export default function FloatingPlayer() {
   // convention — shows what a tap does: ❚❚ while playing, ▶ while paused. A small
   // pop animates it on each toggle.
   const isPlaying = activePostId !== null;
-  const iconScale = useRef(new Animated.Value(1)).current;
+  const iconScale = useSharedValue(1);
+  const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: iconScale.value }] }));
   const prevPlayingRef = useRef(isPlaying);
   useEffect(() => {
     if (isPlaying === prevPlayingRef.current) { return; }
     prevPlayingRef.current = isPlaying;
-    iconScale.stopAnimation();
-    iconScale.setValue(0.7);
-    Animated.spring(iconScale, { toValue: 1, useNativeDriver: true, bounciness: 12, speed: 18 }).start();
+    cancelAnimation(iconScale);
+    iconScale.value = 0.7;
+    iconScale.value = withSpring(1, SPRING_POP);
   }, [isPlaying, iconScale]);
 
   // ─── Circle anims ─────────────────────────────────────────────────────────────
-  const circleX   = useRef(new Animated.Value(0)).current;
-  const circleY   = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  // Reanimated shared values, applied on the UI thread, NOT React Native's Animated with
+  // the native driver. With Animated, a drag `setValue`s the JS copy and the spring back
+  // runs natively; JS learns the spring's end value only from a later event. A heavy
+  // redraw in between (closing full screen, a pause) committed the stale JS copy — the
+  // circle jumped back to where the finger let go, then snapped home when the event
+  // arrived. Visible on every tap on Android (2026-11-10, 2.2.0 closed testing).
+  // useAnimatedStyle reads the live values at every redraw, so nothing can go stale.
+  const circleX   = useSharedValue(0);
+  const circleY   = useSharedValue(0);
+  const scaleAnim = useSharedValue(1);
+  const circleStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: circleX.value }, { translateY: circleY.value }, { scale: scaleAnim.value }],
+  }));
 
-  const springBack = () => Animated.parallel([
-    Animated.spring(circleX, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
-    Animated.spring(circleY, { toValue: 0, useNativeDriver: true, bounciness: 10, speed: 14 }),
-  ]).start();
+  const springBack = () => {
+    circleX.value = withSpring(0, SPRING_BACK);
+    circleY.value = withSpring(0, SPRING_BACK);
+  };
 
   // ─── Close: hold the circle on the X ─────────────────────────────────────────
   const [closeStage, setCloseStage] = useState<'hidden' | 'shown' | 'holding'>('hidden');
@@ -332,9 +366,10 @@ export default function FloatingPlayer() {
   // A close leaves the circle shrunk away on the X. Put it back before the player next shows.
   useEffect(() => {
     if (!shouldShow) { return; }
-    circleX.setValue(0);
-    circleY.setValue(0);
-    scaleAnim.setValue(1);
+    cancelAnimation(circleX); cancelAnimation(circleY); cancelAnimation(scaleAnim);
+    circleX.value = 0;
+    circleY.value = 0;
+    scaleAnim.value = 1;
   }, [shouldShow, circleX, circleY, scaleAnim]);
 
   const cancelCloseHide = () => {
@@ -372,12 +407,15 @@ export default function FloatingPlayer() {
       // Ending a jam stops the music for everyone, so even a full hold asks first.
       console.log('[LIVIL][FP] held on X in a jam → asking first');
       springBack();
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
+      scaleAnim.value = withSpring(1, SPRING_RELEASE);
       setJamExitRoomId(activeJam.jamRoomId);
       return;
     }
     console.log('[LIVIL][FP] held on X → closePlayer');
-    Animated.timing(scaleAnim, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => closePlayer());
+    scaleAnim.value = withTiming(0, { duration: 160 }, finished => {
+      'worklet';
+      if (finished) { runOnJS(closePlayer)(); }
+    });
   };
 
   const confirmJamExit = async () => {
@@ -473,10 +511,10 @@ export default function FloatingPlayer() {
   // resting value so it reappears as the thin white line, not a stale expanded
   // pill. (Mirrors clearNowPlaying's isFullScreenOpen reset in PlaybackContext.)
   useEffect(() => {
-    if ((isRepostOpen || isStoryViewerOpen) && !morphExpanded) {
+    if (covered && !morphExpanded) {
       morphAnim.setValue(0);
     }
-  }, [isRepostOpen, isStoryViewerOpen, morphExpanded, morphAnim]);
+  }, [covered, morphExpanded, morphAnim]);
 
   useEffect(() => {
     Animated.spring(narrowAnim, {
@@ -503,17 +541,17 @@ export default function FloatingPlayer() {
   // touch (pan onStart stops circleX) cleanly interrupts it — and because it
   // dispatches NO gesture, it can never fire play/pause/seek/next.
   const doWiggle = useCallback(() => {
-    circleX.stopAnimation();
-    Animated.sequence([
-      Animated.timing(circleX, { toValue: -7, duration: 110, easing: Easing.out(Easing.quad),   useNativeDriver: true }),
-      Animated.timing(circleX, { toValue:  7, duration: 150, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(circleX, { toValue: -4, duration: 130, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(circleX, { toValue:  0, duration: 120, easing: Easing.out(Easing.quad),   useNativeDriver: true }),
-    ]).start();
-    Animated.sequence([
-      Animated.timing(scaleAnim, { toValue: 1.1, duration: 150, useNativeDriver: true }),
-      Animated.timing(scaleAnim, { toValue: 1,   duration: 280, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-    ]).start();
+    cancelAnimation(circleX);
+    circleX.value = withSequence(
+      withTiming(-7, { duration: 110, easing: REasing.out(REasing.quad) }),
+      withTiming( 7, { duration: 150, easing: REasing.inOut(REasing.quad) }),
+      withTiming(-4, { duration: 130, easing: REasing.inOut(REasing.quad) }),
+      withTiming( 0, { duration: 120, easing: REasing.out(REasing.quad) }),
+    );
+    scaleAnim.value = withSequence(
+      withTiming(1.1, { duration: 150 }),
+      withTiming(1,   { duration: 280, easing: REasing.out(REasing.quad) }),
+    );
   }, [circleX, scaleAnim]);
 
   // First real drag → discovered; stop wiggling for the rest of this session.
@@ -673,8 +711,8 @@ export default function FloatingPlayer() {
       closeFiredRef.current = false;
       closeRevealedRef.current = false;
       closeHoldingRef.current = false;
-      scaleAnim.stopAnimation();
-      Animated.spring(scaleAnim, { toValue: 1.22, useNativeDriver: true, bounciness: 14, speed: 28 }).start();
+      cancelAnimation(scaleAnim);
+      scaleAnim.value = withSpring(1.22, SPRING_PRESS);
     })
     .onStart(() => {
       // Any real drag = the user discovered the circle is movable → stop the
@@ -684,7 +722,7 @@ export default function FloatingPlayer() {
       const inJamRoom = navigationRef.isReady() && navigationRef.getCurrentRoute()?.name === 'JamRoom';
       closeAllowedRef.current = !isFullScreenOpen && !inJamRoom;
       if (jamLocked) { return; }
-      circleX.stopAnimation(); circleY.stopAnimation();
+      cancelAnimation(circleX); cancelAnimation(circleY);
     })
     .onUpdate((e) => {
       // Movement only. The drag used to also scrub — 2x while held right, a rewind timer
@@ -705,18 +743,16 @@ export default function FloatingPlayer() {
         if (over !== closeHoldingRef.current) {
           closeHoldingRef.current = over;
           setCloseStage(over ? 'holding' : 'shown');
-          Animated.spring(scaleAnim, { toValue: over ? CIRCLE_ON_X_SCALE : 1.22, useNativeDriver: true, bounciness: 0, speed: 40 }).start();
+          scaleAnim.value = withSpring(over ? CIRCLE_ON_X_SCALE : 1.22, SPRING_SNAP);
           if (over) {
-            Animated.parallel([
-              Animated.spring(circleX, { toValue: 0,       useNativeDriver: true, bounciness: 0, speed: 40 }),
-              Animated.spring(circleY, { toValue: closeDy, useNativeDriver: true, bounciness: 0, speed: 40 }),
-            ]).start();
+            circleX.value = withSpring(0,       SPRING_SNAP);
+            circleY.value = withSpring(closeDy, SPRING_SNAP);
           }
         }
         if (over) { return; }
       }
-      circleX.setValue(dx);
-      circleY.setValue(dy);
+      circleX.value = dx;
+      circleY.value = dy;
     })
     .onEnd((e) => {
       if (closeFiredRef.current) { return; }
@@ -758,8 +794,8 @@ export default function FloatingPlayer() {
       // Only a drag that showed the X: a tap while the hint lingers must not cut it short.
       if (closeRevealedRef.current) { settleCloseTarget(); }
       springBack();
-      scaleAnim.stopAnimation();
-      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, bounciness: 8, speed: 18 }).start();
+      cancelAnimation(scaleAnim);
+      scaleAnim.value = withSpring(1, SPRING_RELEASE);
     });
 
   // Race, not Simultaneous: whichever recognizes first wins, the other is
@@ -773,7 +809,7 @@ export default function FloatingPlayer() {
   const rightRot = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '0deg', '0deg'], extrapolate: 'clamp' });
   const leftRot  = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '180deg', '0deg'], extrapolate: 'clamp' });
 
-  if ((!shouldShow && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
+  if ((!shouldShow && !wasVisible.current) || covered) { return null; }
 
 
   return (
@@ -887,9 +923,7 @@ export default function FloatingPlayer() {
 
         {/* ── Draggable circle ── */}
         <GestureDetector gesture={gesture}>
-          <Animated.View
-            style={[styles.circleContainer, { transform: [{ translateX: circleX }, { translateY: circleY }, { scale: scaleAnim }] }]}
-          >
+          <Reanimated.View style={[styles.circleContainer, circleStyle]}>
             <View style={styles.grayDisc} />
 
             <View style={styles.rightClip}>
@@ -924,12 +958,12 @@ export default function FloatingPlayer() {
                   Button convention: shows the action a tap would take — ❚❚ while
                   playing (tap to pause), ▶ while paused (tap to play). */}
               {nowPlaying && (
-                <Animated.View style={[flash.wrap, { transform: [{ scale: iconScale }] }]} pointerEvents="none">
+                <Reanimated.View style={[flash.wrap, iconStyle]} pointerEvents="none">
                   {isPlaying ? <PauseGlyph /> : <PlayGlyph />}
-                </Animated.View>
+                </Reanimated.View>
               )}
             </View>
-          </Animated.View>
+          </Reanimated.View>
         </GestureDetector>
       </Animated.View>
 
