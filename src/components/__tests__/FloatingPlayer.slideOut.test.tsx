@@ -10,7 +10,24 @@ import TestRenderer, { act, type ReactTestRenderer } from 'react-test-renderer';
 import FloatingPlayer from '../FloatingPlayer';
 
 jest.mock('react-native-keyboard-controller', () => ({ useKeyboardHandler: jest.fn() }));
-jest.mock('react-native-reanimated', () => ({ runOnJS: (fn: unknown) => fn }));
+// Reanimated's own mock needs the native worklets runtime; the circle's shared values only need
+// to hold a number here (the slide in / out under test still runs on React Native's Animated).
+jest.mock('react-native-reanimated', () => {
+  const { View } = require('react-native');
+  const identity = (v: unknown) => v;
+  return {
+    __esModule: true,
+    default: { View },
+    useSharedValue: (v: unknown) => ({ value: v }),
+    useAnimatedStyle: (fn: () => unknown) => fn(),
+    withSpring: identity,
+    withTiming: identity,
+    withSequence: (...steps: unknown[]) => steps[steps.length - 1],
+    cancelAnimation: () => undefined,
+    runOnJS: identity,
+    Easing: { in: identity, out: identity, inOut: identity, quad: identity, cubic: identity },
+  };
+});
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
@@ -25,7 +42,7 @@ jest.mock('@react-navigation/native', () => ({ useNavigation: () => ({ navigate:
 jest.mock('../../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../services/posts', () => ({}));
 jest.mock('../../services/jamRooms', () => ({}));
-jest.mock('../../navigation/navigationRef', () => ({ navigationRef: {} }));
+jest.mock('../../navigation/navigationRef', () => ({ navigationRef: {}, useCurrentRouteName: () => 'App' }));
 jest.mock('../../hooks/useTrackWaveform', () => ({ useTrackWaveform: () => null }));
 jest.mock('../../utils/haptics', () => ({ haptics: {} }));
 jest.mock('../../contexts/JamContext', () => ({

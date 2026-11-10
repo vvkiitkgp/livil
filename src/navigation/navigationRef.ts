@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import type { RootStackParamList } from './types';
 
@@ -33,11 +34,24 @@ export function flushPendingNavigation(): void {
 }
 
 let currentRoute: { name: string; params?: Record<string, unknown> } = { name: '' };
+const routeListeners = new Set<() => void>();
 
 export function setCurrentRoute(route: { name: string; params?: Record<string, unknown> }): void {
   currentRoute = route;
+  routeListeners.forEach(l => l());
 }
 
 export function getCurrentRoute(): { name: string; params?: Record<string, unknown> } {
   return currentRoute;
+}
+
+function subscribeCurrentRoute(listener: () => void): () => void {
+  routeListeners.add(listener);
+  return () => { routeListeners.delete(listener); };
+}
+const currentRouteName = () => currentRoute.name;
+
+/** The root stack's top screen name, re-rendering the caller when it changes. '' before the first screen. */
+export function useCurrentRouteName(): string {
+  return useSyncExternalStore(subscribeCurrentRoute, currentRouteName, currentRouteName);
 }

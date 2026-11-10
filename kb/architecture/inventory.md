@@ -2,7 +2,7 @@
 tier: 1
 owner: principal-client
 consumers: [ALL]
-last_verified: 2026-11-09
+last_verified: 2026-11-10
 verify_every: 9999d
 verified_by: generated
 visibility: public
@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-606 TypeScript file(s) under `src/`, 120,770 lines.
+608 TypeScript file(s) under `src/`, 120,887 lines.
 
 ## Size hotspots
 
@@ -38,7 +38,7 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/components/FloatingPlayer.tsx` | 1083 |
+| `src/components/FloatingPlayer.tsx` | 1117 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
@@ -194,7 +194,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,057 lines.
+191 file(s), 37,108 lines.
 
 | File | Lines |
 |---|---:|
@@ -202,7 +202,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1511 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 1083 |
+| `src/components/FloatingPlayer.tsx` | 1117 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |
@@ -292,6 +292,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/NotificationPermissionModal.tsx` | 140 |
 | `src/components/ShareRepostSheet.tsx` | 140 |
+| `src/components/__tests__/FloatingPlayer.slideOut.test.tsx` | 139 |
 | `src/components/StoryCard.tsx` | 132 |
 | `src/components/PostCardSkeleton.tsx` | 131 |
 | `src/components/UploadStep.tsx` | 131 |
@@ -302,7 +303,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/OfflineBanner.tsx` | 127 |
 | `src/components/HomeFeedTabs.tsx` | 125 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
-| `src/components/__tests__/FloatingPlayer.slideOut.test.tsx` | 122 |
 | `src/components/__tests__/PlayerCloseTarget.test.tsx` | 121 |
 | `src/components/ProfilePhotoViewer.tsx` | 120 |
 | `src/components/ProfileGridCard.tsx` | 118 |
