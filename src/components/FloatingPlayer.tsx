@@ -92,9 +92,10 @@ const SPRING_PRESS   = { stiffness: 682, damping: 23.4, mass: 1 };  // finger do
 const SPRING_RELEASE = { stiffness: 470, damping: 28.8, mass: 1 };  // finger up → 1× (was 8/18)
 const SPRING_SNAP    = { stiffness: 937, damping: 57.1, mass: 1 };  // onto / off the X, no bounce (was 0/40)
 const SPRING_POP     = { stiffness: 470, damping: 22.8, mass: 1 };  // play/pause glyph pop (was 12/18)
-// Delay (ms) before the pill morphs open, so the FS player opens first and the
-// pill then pops up. Close stays instant (matches the FS collapse).
-const OPEN_MORPH_DELAY = 220;
+// Delay (ms) before the pill morphs open, so the FS player leads and the pill pops
+// up just behind it (FS is ~64% open by then). Was 220 ms; owner asked for 0.1 s
+// (2026-11-10). Close stays instant (matches the FS collapse).
+const OPEN_MORPH_DELAY = 100;
 // One full turn of the spinning cover while a song plays (ms).
 const SPIN_MS = 8000;
 

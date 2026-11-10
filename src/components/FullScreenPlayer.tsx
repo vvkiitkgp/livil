@@ -1351,9 +1351,9 @@ export default function FullScreenPlayer() {
     if (isFullScreenOpen) {
       // Start at the invisible dot at the floating-player circle, then spring
       // outward to full screen. Barely any bounce: 12/10 overshot to 114% of the
-      // screen and took ~530 ms to settle, so the pill (OPEN_MORPH_DELAY = 220 ms in
+      // screen and took ~530 ms to settle, so the pill (OPEN_MORPH_DELAY in
       // FloatingPlayer) opened while the player was still shrinking back (owner,
-      // 2026-11-10). 3/14 peaks at ~100.3%, is 98% open at 220 ms, settles in ~250 ms.
+      // 2026-11-10). 3/14 peaks at ~100.3% and settles in ~250 ms.
       posYAnim.setValue(convergeY);
       scaleAnim.setValue(0.02);
       opacityAnim.setValue(0);
@@ -1870,17 +1870,19 @@ export default function FullScreenPlayer() {
                 })}
           />
           </Reanimated.View>
+        ) : nowPlaying.mediaKind === 'video' && !isFullScreenOpen ? (
+          // A VIDEO closing full screen (or closed / backgrounded): nothing, so the
+          // player shrinks away black. It used to swap to the thumbnail for the close
+          // animation, which read as the cover art coming back (owner, 2026-11-10).
+          null
         ) : (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl) ? (
-          // Cover-art mode: audio posts use coverArtUrl; a video that has demoted
-          // to cover (FS minimized / backgrounded) falls back to its thumbnail so
-          // the picture-to-cover transition matches the floating player instead of
-          // flashing the gradient placeholder.
+          // Cover-art mode: audio posts use coverArtUrl. A video only lands here
+          // while full screen is OPEN with no frame (engine driving, no videoUrl),
+          // and shows its thumbnail full-bleed.
           //
           // AUDIO shows the whole artwork on a card cut to its own proportions,
           // centered between the header and the title block, lit by a purple halo
-          // and its cast shadow, drifting while the song plays. A demoted VIDEO
-          // keeps the full-bleed crop — its thumbnail is a frame of the picture,
-          // and shrinking it would make minimize/background visibly jump.
+          // and its cast shadow, drifting while the song plays.
           nowPlaying.mediaKind === 'video' ? (
             <Image
               source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
