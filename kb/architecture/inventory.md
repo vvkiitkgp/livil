@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,657 lines.
+612 TypeScript file(s) under `src/`, 121,793 lines.
 
 ## Size hotspots
 
@@ -32,17 +32,17 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/components/PostCard.tsx` | 1506 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
-| `src/screens/main/ProfileScreen.tsx` | 1472 |
-| `src/screens/main/HomeScreen.tsx` | 1465 |
+| `src/screens/main/ProfileScreen.tsx` | 1475 |
+| `src/screens/main/HomeScreen.tsx` | 1468 |
 | `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/components/FloatingPlayer.tsx` | 1137 |
+| `src/components/FloatingPlayer.tsx` | 1140 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
-| `src/screens/studio/StudioScreen.tsx` | 743 |
+| `src/screens/studio/StudioScreen.tsx` | 750 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
@@ -51,7 +51,7 @@ reading alone (Constitution P28).
 | `src/screens/studio/RecordPanel.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 24 file(s) over the threshold against **39 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 24 file(s) over the threshold against **40 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-80 file(s), 36,838 lines.
+80 file(s), 36,852 lines.
 
 | File | Lines |
 |---|---:|
@@ -118,14 +118,14 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UploadScreen.tsx` | 2596 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
-| `src/screens/main/ProfileScreen.tsx` | 1472 |
-| `src/screens/main/HomeScreen.tsx` | 1465 |
+| `src/screens/main/ProfileScreen.tsx` | 1475 |
+| `src/screens/main/HomeScreen.tsx` | 1468 |
 | `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
-| `src/screens/studio/StudioScreen.tsx` | 743 |
+| `src/screens/studio/StudioScreen.tsx` | 750 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
@@ -176,7 +176,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/AddToLivilScreen.tsx` | 161 |
+| `src/screens/main/AddToLivilScreen.tsx` | 162 |
 | `src/screens/studio/__tests__/renderMix.test.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
@@ -197,7 +197,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,123 lines.
+191 file(s), 37,132 lines.
 
 | File | Lines |
 |---|---:|
@@ -205,7 +205,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1506 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 1137 |
+| `src/components/FloatingPlayer.tsx` | 1140 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |
@@ -228,8 +228,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MessageMenu.tsx` | 305 |
 | `src/components/__tests__/PostGridCard.test.tsx` | 305 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
+| `src/components/Button.tsx` | 292 |
 | `src/components/ChatSongCard.tsx` | 290 |
-| `src/components/Button.tsx` | 286 |
 | `src/components/InboxBanner.tsx` | 283 |
 | `src/components/TagInput.tsx` | 278 |
 | `src/components/OnboardingNotice.tsx` | 276 |
@@ -395,7 +395,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-128 file(s), 24,266 lines.
+128 file(s), 24,306 lines.
 
 | File | Lines |
 |---|---:|
@@ -416,8 +416,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/playlists.ts` | 390 |
 | `src/services/conversations.ts` | 373 |
 | `src/services/jamRooms.ts` | 368 |
+| `src/services/drafts.ts` | 327 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 317 |
-| `src/services/drafts.ts` | 305 |
 | `src/services/jamRealtime.ts` | 298 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/gifs.ts` | 245 |
@@ -446,12 +446,12 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/activity.test.ts` | 173 |
 | `src/services/__tests__/commentNotifications.test.ts` | 173 |
 | `src/services/__tests__/pushNotificationPress.test.ts` | 172 |
+| `src/services/__tests__/uploadDrafts.test.ts` | 172 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/appBadge.ts` | 165 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/conversationsDelivered.test.ts` | 154 |
-| `src/services/__tests__/uploadDrafts.test.ts` | 154 |
 | `src/services/clipboard.ts` | 154 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 144 |
 | `src/services/__tests__/appUpdate.test.ts` | 141 |
@@ -555,7 +555,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-39 file(s), 2,545 lines.
+40 file(s), 2,588 lines.
 
 | File | Lines |
 |---|---:|
@@ -590,6 +590,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |
 | `src/hooks/__tests__/useNowPlayingCommentsSync.test.tsx` | 45 |
 | `src/hooks/__tests__/useProfileLayout.test.tsx` | 45 |
+| `src/hooks/useOpenPostFlow.ts` | 43 |
 | `src/hooks/useImageAspect.ts` | 37 |
 | `src/hooks/useProfileLayout.ts` | 35 |
 | `src/hooks/useMyDrafts.ts` | 34 |

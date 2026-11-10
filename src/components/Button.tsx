@@ -238,24 +238,28 @@ export function Button({
       ]}
     >
       {showGradient ? <GradientBorder borderRadius={s.radius} colors={borderColors} /> : null}
+      {/* Busy keeps the content's space (invisible) and centres the spinner over it, so the
+          button keeps its exact size and place — a small "+ Post" shrank to a spinner-sized
+          pill when the label was swapped out (owner, 2026-11-10). */}
+      <View style={[styles.content, { gap: s.gap }, busy && styles.hidden]}>
+        {leading}
+        {icon ? <Icon name={icon} size={s.icon} color={labelColor} /> : null}
+        {label ? <Text
+          style={[
+            styles.label,
+            { color: labelColor, fontSize: s.font, fontWeight: paint.weight },
+            labelStyle,
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text> : null}
+      </View>
       {busy ? (
-        <ActivityIndicator color={labelColor} />
-      ) : (
-        <View style={[styles.content, { gap: s.gap }]}>
-          {leading}
-          {icon ? <Icon name={icon} size={s.icon} color={labelColor} /> : null}
-          {label ? <Text
-            style={[
-              styles.label,
-              { color: labelColor, fontSize: s.font, fontWeight: paint.weight },
-              labelStyle,
-            ]}
-            numberOfLines={1}
-          >
-            {label}
-          </Text> : null}
+        <View style={styles.spinner} pointerEvents="none">
+          <ActivityIndicator color={labelColor} />
         </View>
-      )}
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -272,6 +276,8 @@ const styles = StyleSheet.create({
   fullWidth: {
     alignSelf: 'stretch',
   },
+  hidden: { opacity: 0 },
+  spinner: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   content: {
     flexDirection: 'row',
     alignItems: 'center',

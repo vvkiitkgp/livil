@@ -54,6 +54,7 @@ import {
   pinTop,
 } from '../../utils/homeTabsPin';
 import { useSpotifyAvailability } from '../../services/spotify';
+import { useOpenPostFlow } from '../../hooks/useOpenPostFlow';
 import { recordImpression, flushImpressions } from '../../services/feedImpressions';
 import { listActiveStories, type Story } from '../../services/stories';
 import { useStories } from '../../contexts/StoriesContext';
@@ -411,6 +412,7 @@ function useFeedFooter(feed: HomeFeedState): React.ReactElement {
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const spotify = useSpotifyAvailability();
+  const postFlow = useOpenPostFlow();
   const playback = usePlayback();
   // Posts the viewer has deleted in this session. Filtered out before the
   // FlatList sees them, so the card unmounts immediately.
@@ -1191,7 +1193,8 @@ export default function HomeScreen() {
               style={styles.uploadButton}
               // On glass, bright artwork can pass right behind its purple label.
               onMedia={IosGlass != null}
-              onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
+              busy={postFlow.busy}
+              onPress={() => postFlow.open(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
               accessibilityLabel={spotify.reposts !== false ? 'Create a post' : 'Upload a track'}
             />
           </View>

@@ -45,7 +45,7 @@ export function getCurrentRoute(): { name: string; params?: Record<string, unkno
   return currentRoute;
 }
 
-function subscribeCurrentRoute(listener: () => void): () => void {
+export function subscribeCurrentRoute(listener: () => void): () => void {
   routeListeners.add(listener);
   return () => { routeListeners.delete(listener); };
 }

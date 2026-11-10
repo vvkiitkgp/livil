@@ -38,6 +38,22 @@ export function newDraftId(): string {
 let saveChain: Promise<unknown> = Promise.resolve();
 
 /**
+ * The drafts list, read once and reused until a draft is saved or deleted. Drafts and New Post
+ * re-read every draft's files on every visit, one file after another (~20 reads for 10 drafts),
+ * exactly while the screens were sliding — the slow exit from the Editor (owner, Android,
+ * 2026-11-10). Every write below bumps `listVersion` when it finishes; a list read while a write
+ * was running is kept under the version it started at, so the next visit reads again.
+ */
+let listVersion = 0;
+let listCache: { userId: string; version: number; drafts: DraftSummary[] } | null = null;
+const listChanged = () => { listVersion++; listCache = null; };
+/** Runs a draft write and marks the list stale once it has finished, whether it worked or not. */
+function changing<T>(run: Promise<T>): Promise<T> {
+  run.then(listChanged, listChanged);
+  return run;
+}
+
+/**
  * Saves (or re-saves) a draft. Written into `<id>.saving/` first and swapped in at the end,
  * so a crash mid-save leaves the previous version intact.
  *
@@ -50,7 +66,7 @@ export function saveDraft(
   project: Project,
   meta: { id: string; title: string; createdAt: string; durationSec: number },
 ): Promise<void> {
-  const run = saveChain.then(() => saveDraftNow(userId, project, meta));
+  const run = changing(saveChain.then(() => saveDraftNow(userId, project, meta)));
   saveChain = run.catch(() => undefined);
   return run;
 }
@@ -106,6 +122,8 @@ async function saveDraftNow(
 /** The signed-in user's drafts, newest first. Never throws: no drafts → []. */
 export async function listDrafts(userId: string): Promise<DraftSummary[]> {
   if (!studioFiles.available || !isSafeId(userId)) return [];
+  if (listCache && listCache.userId === userId && listCache.version === listVersion) return [...listCache.drafts];
+  const version = listVersion;
   try {
     const all = await studioFiles.listDirs(userId);
     // A save interrupted mid-swap (app killed) leaves the previous version as `<id>.old`
@@ -118,19 +136,23 @@ export async function listDrafts(userId: string): Promise<DraftSummary[]> {
       }
     }
     const names = all.filter(n => isSafeId(n));
-    const out: DraftSummary[] = [];
-    for (const name of names) {
+    // All drafts at once, not one after another: each read is a round trip to the native side.
+    const read = async (name: string): Promise<DraftSummary | null> => {
       const upload = await readUploadDraft(userId, name);
-      if (upload) { out.push(uploadDraftSummary(upload)); continue; }
+      if (upload) return uploadDraftSummary(upload);
       const text = await studioFiles.readText(`${userId}/${name}/project.json`).catch((e: unknown) => {
         console.log(`[LIVIL][DRAFTS] ${name}: project.json unreadable`, e);
         return '';
       });
       const d = parseDraftFile(text);
-      if (d && d.id === name) out.push(summaryOf(d));
-      else if (text) console.log(`[LIVIL][DRAFTS] ${name}: skipped, not a draft this build can open (${text.length} chars)`);
-    }
-    return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      if (d && d.id === name) return summaryOf(d);
+      if (text) console.log(`[LIVIL][DRAFTS] ${name}: skipped, not a draft this build can open (${text.length} chars)`);
+      return null;
+    };
+    const out = (await Promise.all(names.map(read))).filter((d): d is DraftSummary => d !== null);
+    out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    listCache = { userId, version, drafts: out };
+    return [...out];
   } catch {
     return [];
   }
@@ -201,7 +223,7 @@ export async function loadDraft(
 
 export async function deleteDraft(userId: string, id: string): Promise<void> {
   if (!isSafeId(userId) || !isSafeId(id)) return;
-  await studioFiles.remove(`${userId}/${id}`);
+  await changing(studioFiles.remove(`${userId}/${id}`));
 }
 
 // ─── Upload drafts ───────────────────────────────────────────────────────────
@@ -224,7 +246,7 @@ export type UploadDraftInput = Omit<UploadDraftFile['form'], 'media' | 'picture'
  * version intact.
  */
 export function saveUploadDraft(userId: string, input: UploadDraftInput): Promise<void> {
-  const run = saveChain.then(() => saveUploadDraftNow(userId, input));
+  const run = changing(saveChain.then(() => saveUploadDraftNow(userId, input)));
   saveChain = run.catch(() => undefined);
   return run;
 }

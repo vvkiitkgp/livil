@@ -773,7 +773,12 @@ export default function RootNavigator() {
               name="AddToLivil"
               component={AddToLivilScreen}
               options={{
-                presentation: 'modal',
+                // Android: float over Home instead of replacing it. An opaque 'modal' made
+                // react-native-screens detach Home, and closing New Post re-attached the whole
+                // feed — every cover and avatar re-uploaded, ~1 s frozen (OnePlus 7T,
+                // 2026-11-10). It paints its own background, so it looks the same. iPhone keeps
+                // the native sheet.
+                presentation: Platform.OS === 'android' ? 'transparentModal' : 'modal',
                 contentStyle: SHEET_CONTENT_STYLE,
                 gestureEnabled: false,
                 animation: 'slide_from_bottom',

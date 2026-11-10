@@ -27,7 +27,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { navigationRef, useCurrentRouteName } from '../navigation/navigationRef';
-import { isSheetRoute } from '../navigation/sheetRoutes';
+import { isSheetRoute, SHEET_CLOSE_MS } from '../navigation/sheetRoutes';
 import { usePlayback } from '../contexts/PlaybackContext';
 import { useJam } from '../contexts/JamContext';
 import { useJamRealtime } from '../contexts/JamRealtimeContext';
@@ -85,12 +85,7 @@ const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
 // The circle shrinks while it sits on the X, so the X's countdown ring shows around it.
 const CIRCLE_ON_X_SCALE = 0.72;
-/**
- * How long an Android sheet takes to slide away: react-native-screens' slide_from_bottom exit
- * (rns_slide_out_to_bottom) runs for config_mediumAnimTime, 400 ms. A little longer, so the
- * player slides in after the sheet has gone.
- */
-const SHEET_CLOSE_MS = 420;
+
 // The circle's springs (stiffness/damping, mass 1). Converted from the React Native
 // Animated bounciness/speed pairs they replaced, so the motion is unchanged.
 const SPRING_BACK    = { stiffness: 385, damping: 23.4, mass: 1 };  // drag release → rest (was 10/14)
@@ -279,18 +274,26 @@ export default function FloatingPlayer() {
   }, [sheetOnTop]);
   const underSheet = sheetOnTop || sheetLeaving;
   const covered = isStoryViewerOpen || isRepostOpen || underSheet;
+  // Under a sheet the player stays BUILT, just invisible and untouchable: tearing its whole tree
+  // down on every sheet and rebuilding it on the way back was a visible stutter on Android
+  // (2026-11-10). A story or repost still unmounts it, as before (the engine plays that one).
+  const hiddenUnderSheet = underSheet && !isStoryViewerOpen && !isRepostOpen;
   const shouldShow = (!!nowPlaying || !!activeJam) && !covered;
+  // Sliding in and out is for a track starting or ending (and stories/reposts) only. Under a
+  // sheet the player does not MOVE: it vanishes in place and reappears in place once the sheet
+  // has gone, like a player a sheet simply covers (owner, 2026-11-10: "let it stay where it was").
+  const present = (!!nowPlaying || !!activeJam) && !isStoryViewerOpen && !isRepostOpen;
   useEffect(() => {
-    if (shouldShow && !wasVisible.current) {
+    if (present && !wasVisible.current) {
       wasVisible.current = true;
       Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, bounciness: 6 }).start();
-    } else if (!shouldShow && wasVisible.current) {
+    } else if (!present && wasVisible.current) {
       wasVisible.current = false;
       // The hidden offset only moves the player down onto the tab bar, and `wasVisible` is a ref,
       // so it takes a render after the slide to remove it. Without one the wave stays on screen.
       Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => renderAfterSlideOut());
     }
-  }, [shouldShow, slideAnim]);
+  }, [present, slideAnim]);
 
   // ─── Immersive (clean-view) hide ──────────────────────────────────────────────
   // When FullScreenPlayer enters clean view, the floating pill must get out of the
@@ -829,7 +832,7 @@ export default function FloatingPlayer() {
   const rightRot = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '0deg', '0deg'], extrapolate: 'clamp' });
   const leftRot  = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '180deg', '0deg'], extrapolate: 'clamp' });
 
-  if ((!shouldShow && !wasVisible.current) || covered) { return null; }
+  if ((!present && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
 
 
   return (
@@ -843,7 +846,7 @@ export default function FloatingPlayer() {
       />
 
       <Animated.View
-        style={[styles.container, { bottom: playerBottom, opacity: immersiveOpacity, transform: [{ translateY }] }]}
+        style={[styles.container, { bottom: playerBottom, opacity: hiddenUnderSheet ? 0 : immersiveOpacity, transform: [{ translateY }] }]}
         pointerEvents={(shouldShow && !isImmersive) ? 'box-none' : 'none'}
       >
         {/* ── Bar → Pill ── */}
@@ -938,7 +941,7 @@ export default function FloatingPlayer() {
           {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
               before the pill expands, and only re-ripples once it collapses back —
               during a jam the pill is always expanded, so the wave simply stays off. */}
-          <WaveVisualizer playing={isPlaying} suppressed={isExpanded} width={REST_BAR_W} waveform={waveform} />
+          <WaveVisualizer playing={isPlaying} suppressed={isExpanded || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
         </Animated.View>
 
         {/* ── Draggable circle ── */}
