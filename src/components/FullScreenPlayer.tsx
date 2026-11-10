@@ -73,6 +73,8 @@ const EDGE_BACK_ZONE = 20;
 const IS_IOS = Platform.OS === 'ios';
 
 const FLOAT_D = 60;
+// The open burst's spring (mass 1). See the open effect for how it was chosen.
+const FS_OPEN_SPRING = { stiffness: 1538, damping: 68, mass: 1 };
 /**
  * The Queue/Info panel's resting height, as a share of the window. Taller than the other
  * sheets' half: the floating player, its pill and the Queue/Info buttons cover roughly the
@@ -1353,14 +1355,17 @@ export default function FullScreenPlayer() {
       // outward to full screen. Barely any bounce: 12/10 overshot to 114% of the
       // screen and took ~530 ms to settle, so the pill (OPEN_MORPH_DELAY in
       // FloatingPlayer) opened while the player was still shrinking back (owner,
-      // 2026-11-10). 3/14 peaks at ~100.3% and settles in ~250 ms.
+      // 2026-11-10). Then it felt slow, so it runs at TWICE the speed of
+      // bounciness 3 / speed 14 (k 385, c 34): stiffness ×4 and damping ×2 keep the
+      // same damping ratio (0.87), so the same shape in half the time — 90% open at
+      // ~83 ms, looks done at ~120 ms, peaks at ~100.3%.
       posYAnim.setValue(convergeY);
       scaleAnim.setValue(0.02);
       opacityAnim.setValue(0);
       Animated.parallel([
-        Animated.spring(posYAnim,  { toValue: 0, speed: 14, bounciness: 3, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, speed: 14, bounciness: 3, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
+        Animated.spring(posYAnim,  { toValue: 0, ...FS_OPEN_SPRING, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, ...FS_OPEN_SPRING, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 70, useNativeDriver: true }),
       ]).start();
     } else {
       setActiveTab(null);
