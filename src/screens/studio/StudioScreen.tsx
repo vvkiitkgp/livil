@@ -6,6 +6,7 @@ import { usePlayback } from '../../contexts/PlaybackContext';
 import { useToast } from '../../contexts/ToastContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../navigation/types';
+import { afterSheetsClose } from '../../navigation/sheetRoutes';
 import { draftsAvailable, loadDraft, newDraftId, saveDraft, writeDraftMix } from '../../services/drafts';
 import { MIN_TRACK_SECONDS } from '../../../shared/constants/media';
 import { encodeFlac } from '../../utils/audioFile/flac';
@@ -169,7 +170,13 @@ export default function StudioScreen() {
     })();
     return () => {
       alive = false;
-      lastStudioShutdown = engine.dispose().finally(() => { if (studioOwner === token) setEngineDriving(false); });
+      // The feed's music player comes back only once the posting sheets (Drafts, New Post) have
+      // closed: nothing plays there, and rebuilding it (ExoPlayer, its media session) landed in
+      // the middle of those screens' slides (owner, Android, 2026-11-10). A newer Editor session
+      // keeps it off.
+      lastStudioShutdown = engine.dispose().finally(() => {
+        afterSheetsClose(() => { if (studioOwner === token) setEngineDriving(false); });
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

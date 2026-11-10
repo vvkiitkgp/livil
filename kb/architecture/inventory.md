@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,657 lines.
+611 TypeScript file(s) under `src/`, 121,728 lines.
 
 ## Size hotspots
 
@@ -38,11 +38,11 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/components/FloatingPlayer.tsx` | 1137 |
+| `src/components/FloatingPlayer.tsx` | 1136 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
-| `src/screens/studio/StudioScreen.tsx` | 743 |
+| `src/screens/studio/StudioScreen.tsx` | 750 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-80 file(s), 36,838 lines.
+80 file(s), 36,845 lines.
 
 | File | Lines |
 |---|---:|
@@ -125,7 +125,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
-| `src/screens/studio/StudioScreen.tsx` | 743 |
+| `src/screens/studio/StudioScreen.tsx` | 750 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
@@ -197,7 +197,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,123 lines.
+191 file(s), 37,122 lines.
 
 | File | Lines |
 |---|---:|
@@ -205,7 +205,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1506 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 1137 |
+| `src/components/FloatingPlayer.tsx` | 1136 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |
@@ -395,7 +395,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-128 file(s), 24,266 lines.
+128 file(s), 24,306 lines.
 
 | File | Lines |
 |---|---:|
@@ -416,8 +416,8 @@ case the call fails silently wherever its result is discarded.
 | `src/services/playlists.ts` | 390 |
 | `src/services/conversations.ts` | 373 |
 | `src/services/jamRooms.ts` | 368 |
+| `src/services/drafts.ts` | 327 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 317 |
-| `src/services/drafts.ts` | 305 |
 | `src/services/jamRealtime.ts` | 298 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/gifs.ts` | 245 |
@@ -446,12 +446,12 @@ case the call fails silently wherever its result is discarded.
 | `src/services/__tests__/activity.test.ts` | 173 |
 | `src/services/__tests__/commentNotifications.test.ts` | 173 |
 | `src/services/__tests__/pushNotificationPress.test.ts` | 172 |
+| `src/services/__tests__/uploadDrafts.test.ts` | 172 |
 | `src/services/__tests__/lyrics.test.ts` | 167 |
 | `src/services/__tests__/waveformDsp.test.ts` | 166 |
 | `src/services/appBadge.ts` | 165 |
 | `src/services/__tests__/publishTrackCleanup.test.ts` | 159 |
 | `src/services/__tests__/conversationsDelivered.test.ts` | 154 |
-| `src/services/__tests__/uploadDrafts.test.ts` | 154 |
 | `src/services/clipboard.ts` | 154 |
 | `src/services/__tests__/fetchHomeFeedPage.test.ts` | 144 |
 | `src/services/__tests__/appUpdate.test.ts` | 141 |

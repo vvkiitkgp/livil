@@ -146,6 +146,24 @@ describe('upload drafts', () => {
     expect([...mockFiles.keys()].some(k => k.startsWith('me/draft1/'))).toBe(false);
   });
 
+  it('reads the drafts once, until one is saved or deleted', async () => {
+    await saveUploadDraft('me', input());
+    await saveUploadDraft('me', input({ id: 'draft2', title: 'Second' }));
+    const files = jest.requireMock('../studioFiles').studioFiles as { readText: (rel: string) => Promise<string> };
+    const reads = jest.spyOn(files, 'readText');
+    expect((await listDrafts('me')).length).toBe(2);
+    const first = reads.mock.calls.length;
+    expect(first).toBeGreaterThan(0);
+    // Coming back to Drafts / New Post: nothing changed, nothing read.
+    expect((await listDrafts('me')).length).toBe(2);
+    expect(reads.mock.calls.length).toBe(first);
+    // A delete (or a save) makes the next visit read again, and see it.
+    await deleteDraft('me', 'draft2');
+    expect((await listDrafts('me')).map(d => d.id)).toEqual(['draft1']);
+    expect(reads.mock.calls.length).toBeGreaterThan(first);
+    reads.mockRestore();
+  });
+
   it('titles an unnamed draft after its file', async () => {
     await saveUploadDraft('me', input({ title: '' }));
     expect((await listDrafts('me'))[0].title).toBe('IMG_5632');
