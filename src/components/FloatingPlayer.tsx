@@ -192,7 +192,6 @@ export default function FloatingPlayer() {
     playNext, playPrev,
     openFullScreenPlayer, closeFullScreenPlayer, isFullScreenOpen,
     isImmersive,
-    videoFrameBuffering,
     jamLocked,
     shuffleEnabled, toggleShuffle,
     repeatMode, cycleRepeatMode,
@@ -464,55 +463,23 @@ export default function FloatingPlayer() {
   const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
   // Jam active but fullscreen NOT open → narrow pill (no shuffle/repeat)
   const isJamOnly  = !!activeJam && !isFullScreenOpen;
-  const isVideo    = nowPlaying?.mediaKind === 'video';
 
-  // For a VIDEO opening full-screen, keep the handle as a straight line until the
-  // FS video frame is actually showing (mounted/ready), THEN expand the pill — so
-  // it doesn't expand over a still-loading (cover-only) video. Audio and jam
-  // expand right away. We only READ the FS frame's buffering flag; the engine is
-  // untouched.
-  const [videoFrameReady, setVideoFrameReady] = useState(false);
-  const sawFrameBufferingRef = useRef(false);
-
-  // Reset readiness whenever FS (re)opens for a video or the video track changes.
-  useEffect(() => {
-    if (isFullScreenOpen && isVideo) {
-      setVideoFrameReady(false);
-      sawFrameBufferingRef.current = false;
-    }
-  }, [isFullScreenOpen, isVideo, nowPlaying?.postId]);
-
-  // The FS frame raises videoFrameBuffering on mount and clears it once the first
-  // picture is decodable → "buffered then cleared" means ready/showing.
-  useEffect(() => {
-    if (!isFullScreenOpen || !isVideo) { return; }
-    if (videoFrameBuffering) { sawFrameBufferingRef.current = true; }
-    else if (sawFrameBufferingRef.current) { setVideoFrameReady(true); }
-  }, [videoFrameBuffering, isFullScreenOpen, isVideo]);
-
-  // Safety net: never leave the handle stuck as a line if the frame never reports
-  // ready (instant cached load, a stall, or a decode error).
-  useEffect(() => {
-    if (!isFullScreenOpen || !isVideo || videoFrameReady) { return; }
-    const id = setTimeout(() => setVideoFrameReady(true), 4000);
-    return () => clearTimeout(id);
-  }, [isFullScreenOpen, isVideo, videoFrameReady]);
-
-  // Pill expands immediately for a jam or audio; for a video opening FS it waits
-  // for the frame to be ready (until then it stays the straight line).
-  const morphExpanded = !!activeJam || (isFullScreenOpen && (!isVideo || videoFrameReady));
+  // The pill opens with the full-screen player, for audio and video alike. It must
+  // NOT wait for a video's first frame: it used to, and on a slow network the handle
+  // sat as a bare line for up to 4 s after full screen had opened (owner, 2026-11-10).
+  // Full screen already shows the cover while the video loads.
+  const morphExpanded = !!activeJam || isFullScreenOpen;
 
   const morphAnim  = useRef(new Animated.Value(0)).current;
   const narrowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (morphExpanded) {
-      // Springs up with a clear, graceful bounce. Audio FS-open keeps the fixed
-      // pre-expand delay (feels right); video has already waited for its frame, so
-      // it expands immediately on ready; jam too.
+      // Springs up with a clear, graceful bounce, OPEN_MORPH_DELAY after full screen
+      // starts opening so it pops up behind it. A jam's pill (FS closed) opens at once.
       Animated.spring(morphAnim, {
         toValue: 1,
-        delay: (isFullScreenOpen && !isVideo) ? OPEN_MORPH_DELAY : 0,
+        delay: isFullScreenOpen ? OPEN_MORPH_DELAY : 0,
         speed: 10,
         bounciness: 12,
         useNativeDriver: false,
@@ -526,7 +493,7 @@ export default function FloatingPlayer() {
         useNativeDriver: false,
       }).start();
     }
-  }, [morphExpanded, isFullScreenOpen, isVideo, morphAnim]);
+  }, [morphExpanded, isFullScreenOpen, morphAnim]);
 
   // Belt-and-suspenders: while the player is hidden behind a covering screen
   // (Repost / Story viewer) it renders null, so an in-flight collapse animation
