@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,637 lines.
+611 TypeScript file(s) under `src/`, 121,657 lines.
 
 ## Size hotspots
 
@@ -38,7 +38,7 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/components/FloatingPlayer.tsx` | 1117 |
+| `src/components/FloatingPlayer.tsx` | 1137 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
@@ -197,7 +197,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,103 lines.
+191 file(s), 37,123 lines.
 
 | File | Lines |
 |---|---:|
@@ -205,7 +205,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1506 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 1117 |
+| `src/components/FloatingPlayer.tsx` | 1137 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |

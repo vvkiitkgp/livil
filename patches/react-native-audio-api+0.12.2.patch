@@ -26,3 +26,27 @@ index 5362dde..23d6d49 100644
  
      if (error != nil) {
        invokeOnErrorCallback(
+diff --git a/node_modules/react-native-audio-api/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp b/node_modules/react-native-audio-api/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp
+index a88c634..dcc2739 100644
+--- a/node_modules/react-native-audio-api/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp
++++ b/node_modules/react-native-audio-api/android/src/main/cpp/audioapi/android/core/AudioPlayer.cpp
+@@ -25,10 +25,18 @@ AudioPlayer::AudioPlayer(
+ bool AudioPlayer::openAudioStream() {
+   AudioStreamBuilder builder;
+ 
++  // LIVIL PATCH: play as MUSIC on the power-saving ("deep buffer") output, like ExoPlayer does.
++  // PerformanceMode::None landed on the primary/fast output, which phones' music processing
++  // (OnePlus: Dolby DAP, always on for the speaker) is not attached to, so the Editor played far
++  // quieter than the feed at the same media volume (owner, OnePlus 7T, 2026-11-10; equal with
++  // Dolby off). PowerSaving makes AAudio request AUDIO_OUTPUT_FLAG_DEEP_BUFFER. Costs latency
++  // (tens of ms), which the recorder's click measurement already compensates on the speaker.
+   builder.setSharingMode(SharingMode::Exclusive)
+       ->setFormat(AudioFormat::Float)
+       ->setFormatConversionAllowed(true)
+-      ->setPerformanceMode(PerformanceMode::None)
++      ->setUsage(Usage::Media)
++      ->setContentType(ContentType::Music)
++      ->setPerformanceMode(PerformanceMode::PowerSaving)
+       ->setChannelCount(channelCount_)
+       ->setSampleRateConversionQuality(SampleRateConversionQuality::Medium)
+       ->setFramesPerDataCallback(RENDER_QUANTUM_SIZE)
