@@ -36,6 +36,21 @@ export function StudioLoading({ title, detail, progress = null }: Props) {
   const glow = useSharedValue(0.25);
   const sweep = useSharedValue(0);
   const [barW, setBarW] = useState(BAR_W);
+  // The bar glides to each reported step, then keeps creeping a little toward the next one, so
+  // a long native read (one call, no progress of its own) never looks frozen. It never moves
+  // backwards, and never reaches the end before the work does.
+  const shown = useSharedValue(0);
+  useEffect(() => {
+    if (progress == null) return;
+    cancelAnimation(shown);
+    const to = Math.max(shown.value, Math.min(1, progress));
+    const creep = Math.min(0.97, Math.max(to, progress + 0.08));
+    shown.value = withSequence(
+      withTiming(to, { duration: 400, easing: Easing.out(Easing.quad) }),
+      withTiming(creep, { duration: 6000, easing: Easing.out(Easing.quad) }),
+    );
+  }, [progress, shown]);
+  const fillStyle = useAnimatedStyle(() => ({ width: Math.max(4, barW * shown.value) }));
 
   useEffect(() => {
     const ease = Easing.out(Easing.quad);
@@ -52,8 +67,8 @@ export function StudioLoading({ title, detail, progress = null }: Props) {
     glow.value = withRepeat(withTiming(0.6, { duration: 1100, easing: Easing.inOut(Easing.sin) }), -1, true);
     sweep.value = withRepeat(withTiming(1, { duration: 1300, easing: Easing.inOut(Easing.cubic) }), -1);
     // Reanimated keeps an infinite repeat running after unmount otherwise.
-    return () => { cancelAnimation(beat); cancelAnimation(glow); cancelAnimation(sweep); };
-  }, [beat, glow, sweep]);
+    return () => { cancelAnimation(beat); cancelAnimation(glow); cancelAnimation(sweep); cancelAnimation(shown); };
+  }, [beat, glow, sweep, shown]);
 
   const logoStyle = useAnimatedStyle(() => ({ transform: [{ scale: beat.value }] }));
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value, transform: [{ scale: 0.9 + glow.value * 0.4 }] }));
@@ -72,9 +87,9 @@ export function StudioLoading({ title, detail, progress = null }: Props) {
       <Text style={styles.detail}>{detail ?? ' '}</Text>
       <View style={styles.track} onLayout={e => setBarW(Math.floor(e.nativeEvent.layout.width))}>
         {known ? (
-          <View style={[styles.fill, { width: Math.max(4, barW * Math.min(1, progress)) }]}>
+          <Animated.View style={[styles.fill, fillStyle]}>
             <GradientFill width={barW} height={4} borderRadius={2} />
-          </View>
+          </Animated.View>
         ) : (
           <Animated.View style={[styles.sweep, { width: barW * 0.4 }, sweepStyle]}>
             <GradientFill width={barW * 0.4} height={4} borderRadius={2} />

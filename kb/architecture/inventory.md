@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-608 TypeScript file(s) under `src/`, 120,887 lines.
+611 TypeScript file(s) under `src/`, 121,637 lines.
 
 ## Size hotspots
 
@@ -30,11 +30,11 @@ reading alone (Constitution P28).
 | `src/screens/main/UploadScreen.tsx` | 2596 |
 | `src/components/FullScreenPlayer.tsx` | 2487 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
-| `src/components/PostCard.tsx` | 1511 |
+| `src/components/PostCard.tsx` | 1506 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1324 |
+| `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -42,10 +42,10 @@ reading alone (Constitution P28).
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
+| `src/screens/studio/StudioScreen.tsx` | 743 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 686 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/studio/RecordPanel.tsx` | 610 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,098 lines.
+80 file(s), 36,838 lines.
 
 | File | Lines |
 |---|---:|
@@ -120,14 +120,14 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1324 |
+| `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
+| `src/screens/studio/StudioScreen.tsx` | 743 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 686 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/studio/RecordPanel.tsx` | 610 |
@@ -136,10 +136,10 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
 | `src/screens/studio/SynthSheet.tsx` | 483 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
+| `src/screens/studio/EditorPanel.tsx` | 418 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
-| `src/screens/studio/EditorPanel.tsx` | 400 |
 | `src/screens/studio/TunePanel.tsx` | 399 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 359 |
@@ -152,6 +152,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignUpScreen.tsx` | 290 |
 | `src/screens/main/SettingsScreen.tsx` | 290 |
 | `src/screens/auth/AddPhotoScreen.tsx` | 273 |
+| `src/screens/studio/renderMix.ts` | 273 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/PlaylistScreen.tsx` | 269 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
@@ -170,18 +171,20 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/BlockedAccountsScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 202 |
 | `src/screens/studio/ClipTrack.tsx` | 201 |
+| `src/screens/studio/liveLoudness.ts` | 197 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/AddToLivilScreen.tsx` | 161 |
-| `src/screens/studio/renderMix.ts` | 157 |
+| `src/screens/studio/__tests__/renderMix.test.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
+| `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
 | `src/screens/studio/SongTrim.tsx` | 116 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
+| `src/screens/studio/StudioLoading.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |
 | `src/screens/studio/EffectsSheet.tsx` | 111 |
-| `src/screens/studio/StudioLoading.tsx` | 99 |
 | `src/screens/studio/finishTake.ts` | 83 |
 | `src/screens/studio/__tests__/timeline.test.ts` | 81 |
 | `src/screens/studio/__tests__/BpmStepper.test.tsx` | 80 |
@@ -194,12 +197,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,108 lines.
+191 file(s), 37,103 lines.
 
 | File | Lines |
 |---|---:|
 | `src/components/FullScreenPlayer.tsx` | 2487 |
-| `src/components/PostCard.tsx` | 1511 |
+| `src/components/PostCard.tsx` | 1506 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/components/FloatingPlayer.tsx` | 1117 |
@@ -392,7 +395,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-128 file(s), 24,260 lines.
+128 file(s), 24,266 lines.
 
 | File | Lines |
 |---|---:|
@@ -414,7 +417,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/conversations.ts` | 373 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 317 |
-| `src/services/drafts.ts` | 299 |
+| `src/services/drafts.ts` | 305 |
 | `src/services/jamRealtime.ts` | 298 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/gifs.ts` | 245 |
@@ -598,13 +601,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-131 file(s), 13,958 lines.
+131 file(s), 13,967 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/synth.ts` | 910 |
+| `src/utils/audioFx/master.ts` | 456 |
 | `src/utils/tempo/index.ts` | 453 |
-| `src/utils/audioFx/master.ts` | 447 |
 | `src/utils/__tests__/synth.test.ts` | 405 |
 | `src/utils/__tests__/chatTyping.test.tsx` | 268 |
 | `src/utils/audioFile/flac.ts` | 234 |

@@ -121,6 +121,9 @@ export default function StudioScreen() {
   const [diskStale, setDiskStale] = useState(false);
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(!!openDraftId);
+  // The Editor panel has drawn at its real size (see `cover`); never reset — later panels
+  // swap in without a loading screen.
+  const [editorDrawn, setEditorDrawn] = useState(false);
   /** What opening a draft is doing, for the loading screen. */
   const [loadStep, setLoadStep] = useState<{ detail: string; progress: number | null }>({ detail: 'Getting the studio ready…', progress: null });
   /** The finished song for the "Your song" step, and the project it was mixed from. */
@@ -182,13 +185,14 @@ export default function StudioScreen() {
         setLoadStep({ detail: 'Reading your recordings…', progress: 0 });
         // Decoded at the Editor's rate, except takes still owed a click repair: those come at their
         // own rate, are repaired, THEN converted (conversion smears a click past repair).
-        const d = await loadDraft(me, openDraftId, engine.sampleRate, CLICK_REPAIR_VERSION, (i, n) => setLoadStep({ detail: 'Reading your recordings…', progress: (0.4 * i) / n }));
+        // Reading the recordings is most of the wait: 70 % of the bar, the fixes after it 30 %.
+        const d = await loadDraft(me, openDraftId, engine.sampleRate, CLICK_REPAIR_VERSION, (i, n) => setLoadStep({ detail: 'Reading your recordings…', progress: (0.7 * i) / n }));
         if (!alive) return;
         const voices = [];
         let repaired = 0;
         for (const v of d.project.voices) {
-          const share = 0.6 / d.project.voices.length;
-          const at = 0.4 + share * voices.length;
+          const share = 0.3 / d.project.voices.length;
+          const at = 0.7 + share * voices.length;
           let take = v.take;
           if ((take.clickRepair ?? 0) < CLICK_REPAIR_VERSION) {
             setLoadStep({ detail: 'Removing recorder clicks…', progress: at });
@@ -249,6 +253,7 @@ export default function StudioScreen() {
   // Playhead and level meter while playing. The level is kept to whole dB so the Editor only
   // re-renders for it when the reading actually changes.
   const [level, setLevel] = useState<number | null>(null);
+  const [postLevel, setPostLevel] = useState<number | null>(null);
   useEffect(() => {
     if (!playing) { setLevel(null); return; }
     let tick = 0;
@@ -257,6 +262,8 @@ export default function StudioScreen() {
       if (++tick % 4 === 0) {
         const db = engine.level();
         setLevel(db == null || !Number.isFinite(db) ? null : Math.round(db));
+        const post = engine.postLoudness();
+        setPostLevel(post == null ? null : Math.round(post * 10) / 10);
       }
     }, 50);
     return () => clearInterval(id);
@@ -427,8 +434,16 @@ export default function StudioScreen() {
     setPhase('editor');
   }, [project.voices.length, update]);
 
-  /** Next: mix the song (once per version of the project) and show it as it will be posted. */
+  /**
+   * Next: mix the song (once per version of the project) and show it as it will be posted.
+   * ONE render at a time: Back during a mix keeps it running, and a second Next used to start
+   * another full-length render beside it — two mixes in memory is the pattern that has killed
+   * the Editor before. A Next for the version already mixing just shows its progress; a Next
+   * for a newer version waits for the running one, whose result is then dropped, not kept.
+   */
+  const mixingRef = useRef<{ of: Project; done: Promise<void> } | null>(null);
   const goFinal = useCallback(async () => {
+    console.log(`[LIVIL][MIX] Next tapped (mixed=${mix?.of === project}, in flight=${!!mixingRef.current})`);
     engine.stop();
     setPlaying(false);
     const r = songRange(project);
@@ -438,18 +453,36 @@ export default function StudioScreen() {
     }
     setPhase('final');
     if (mix?.of === project) return;
+    if (mixingRef.current?.of === project) return;
+    const previous = mixingRef.current;
     setMix(null);
     setMixProgress(0);
-    try {
-      const t0 = Date.now();
-      const m = await renderMix(project, setMixProgress);
-      console.log(`[LIVIL][POST] ${m.seconds.toFixed(1)} s mixed in ${Date.now() - t0} ms`);
-      setMix({ of: project, mix: m });
-    } catch (e) {
-      console.log('[LIVIL][POST] mix failed', e);
-      showToast("Couldn't mix the song.", { kind: 'error' });
-      setPhase('editor');
-    }
+    const current = () => mixingRef.current?.of === project;
+    const done = (async () => {
+      // Wait for the render in flight, but never forever: if it has hung, a new Next must still
+      // be able to start (the cost is two renders in memory for that one bad case).
+      if (previous) { console.log('[LIVIL][MIX] waiting for the mix in flight'); await Promise.race([previous.done, new Promise<void>(r => setTimeout(r, 15000))]); }
+      // Let React paint "Your song" with its spinner before the mix starts: the render's set-up
+      // is synchronous, and started in the same tick it left the Editor on screen, frozen and
+      // apparently still tappable, with no sign that Next had done anything.
+      await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      console.log('[LIVIL][MIX] spinner painted, mixing');
+      try {
+        const t0 = Date.now();
+        const m = await renderMix(project, f => { if (current()) setMixProgress(f); });
+        console.log(`[LIVIL][POST] ${m.seconds.toFixed(1)} s mixed in ${Date.now() - t0} ms${current() ? '' : ' (superseded, dropped)'}`);
+        if (current()) setMix({ of: project, mix: m });
+      } catch (e) {
+        console.log('[LIVIL][POST] mix failed', e);
+        if (current()) {
+          showToast("Couldn't mix the song.", { kind: 'error' });
+          setPhase('editor');
+        }
+      } finally {
+        if (current()) mixingRef.current = null;
+      }
+    })();
+    mixingRef.current = { of: project, done };
   }, [engine, project, mix, showToast]);
 
   /**
@@ -514,9 +547,30 @@ export default function StudioScreen() {
 
   if (phase === 'editor') seenEditor.current = true;
 
-  if (!ready || opening) {
-    return <StudioLoading title={opening ? 'Opening your draft' : 'Opening the Editor'} detail={opening ? loadStep.detail : 'Getting the studio ready…'} progress={opening ? loadStep.progress : null} />;
-  }
+  const markEditorDrawn = useCallback(() => setEditorDrawn(true), []);
+  // Never leave the cover up if the panel's signal is lost.
+  useEffect(() => {
+    if (editorDrawn || phase !== 'editor' || !ready || opening) return;
+    const t = setTimeout(() => setEditorDrawn(true), 1500);
+    return () => clearTimeout(t);
+  }, [editorDrawn, phase, ready, opening]);
+
+  // The loading screen stays over the Editor until the Editor has drawn at its real size (its
+  // sliders and timeline measure themselves a frame after they first draw), as one more step:
+  // "Getting the Editor ready…". It is ONE StudioLoading in a fixed place in the tree, so its
+  // animations carry on instead of restarting when the loading ends.
+  const loading = !ready || opening;
+  const covered = loading || (phase === 'editor' && !editorDrawn);
+  const cover = covered ? (
+    <View style={StyleSheet.absoluteFill}>
+      <StudioLoading
+        title={opening || (!loading && openDraftId) ? 'Opening your draft' : 'Opening the Editor'}
+        detail={loading ? (opening ? loadStep.detail : 'Getting the studio ready…') : 'Getting the Editor ready…'}
+        progress={loading ? (opening ? loadStep.progress : null) : (openDraftId ? 1 : null)}
+      />
+    </View>
+  ) : null;
+  if (loading) return <View style={styles.root}>{cover}</View>;
 
   return (
     <View style={styles.root}>
@@ -568,10 +622,12 @@ export default function StudioScreen() {
       )}
       {phase === 'editor' && (
         <EditorPanel
+          onDrawn={markEditorDrawn}
           project={project}
           playing={playing}
           playhead={playhead}
           level={level}
+          postLevel={postLevel}
           onTogglePlay={togglePlay}
           onSeek={sec => { engine.seek(sec); setPlayhead(sec); }}
           onLane={(lane, restart) => update(p => ({ ...p, voices: p.voices.map(v => (v.id === lane.id ? lane : v)) }), restart)}
@@ -675,6 +731,7 @@ export default function StudioScreen() {
         onConfirm={() => void exclusive('Saving your draft…', async () => { if (await save()) leave(); })}
         onCancel={() => setConfirmExit(false)}
       />
+      {cover}
     </View>
   );
 }

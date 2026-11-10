@@ -9,8 +9,14 @@
  * milliseconds around a peak instead, which you don't hear as fuzz.
  */
 
-/** Owner decision 2026-11-02: the streaming standard (Spotify/YouTube), not "loud". */
-export const TARGET_LUFS = -14;
+/**
+ * Owner decision 2026-11-10: as loud as the feed. Livil does not normalise what people upload
+ * (those land around −10 LUFS), so the streaming standard chosen on 2026-11-02 (−14) left every
+ * Editor song 3–4 dB quieter than the songs around it. −11 is the loudest the 4 dB limiting cap
+ * reaches cleanly on a voice + drums mix (measured: −11.1 LUFS at 3.3 dB of limiting; −10 hits
+ * the cap and lands at −10.6 anyway).
+ */
+export const TARGET_LUFS = -11;
 /** True-peak ceiling: −1 dBTP keeps the AAC copy listeners stream from clipping. */
 export const CEILING_DBTP = -1;
 /** At most this much limiting at the loud moments — ship quieter rather than squash. */
@@ -45,7 +51,7 @@ export function kWeighting(fs: number): [Biquad, Biquad] {
 }
 
 /** One channel's K-weighting (both stages), inlined — this runs on every sample. */
-class KFilter {
+export class KFilter {
   private x1 = 0; private x2 = 0; private y1 = 0; private y2 = 0;
   private u1 = 0; private u2 = 0; private v1 = 0; private v2 = 0;
   private b0: number; private b1: number; private b2: number; private a1: number; private a2: number;
@@ -68,7 +74,7 @@ class KFilter {
  * Integrated loudness from 100 ms hop energies (Σ K-weighted y² over channels, `hopLen`
  * frames each): 400 ms blocks = 4 hops, absolute gate −70 LUFS, relative gate −10 LU.
  */
-function gatedLufs(hops: ArrayLike<number>, count: number, hopLen: number): number {
+export function gatedLufs(hops: ArrayLike<number>, count: number, hopLen: number): number {
   const L = (p: number) => -0.691 + 10 * Math.log10(p);
   const z: number[] = [];
   for (let j = 0; j + 3 < count; j++) z.push((hops[j] + hops[j + 1] + hops[j + 2] + hops[j + 3]) / (4 * hopLen));
@@ -369,6 +375,8 @@ export async function masterInPlace(
   channels: Float32Array[],
   sampleRate: number,
   onProgress?: (fraction: number) => void,
+  /** The loudness to aim for; the app's target unless a test asks otherwise. */
+  targetLufs: number = TARGET_LUFS,
 ): Promise<MasterReport> {
   const t0 = Date.now();
   // Dual-mono (everything in the Editor is mono today): master one channel, copy it over.
@@ -383,11 +391,11 @@ export async function masterInPlace(
 
   // Aim at the target, but never limit harder than MAX_LIMIT_DB. Raising the gain by Δ raises
   // the limiting by up to Δ, so a step up is capped at the room left under the cap.
-  let gainDb = Math.min(24, TARGET_LUFS - inputLufs);
+  let gainDb = Math.min(24, targetLufs - inputLufs);
   let res = dryRun(a, sampleRate, gainDb, ceilingDb);
   let best = res.limitDb <= MAX_LIMIT_DB + 0.1 ? { gainDb, res } : null;
   for (let k = 0; k < 6; k++) {
-    const need = TARGET_LUFS - (res.lufs + monoOffset);
+    const need = targetLufs - (res.lufs + monoOffset);
     let step: number;
     if (res.limitDb > MAX_LIMIT_DB + 0.1) step = MAX_LIMIT_DB - res.limitDb - 0.1;
     else if (need > 0.2) step = Math.min(need, Math.max(0, MAX_LIMIT_DB - res.limitDb));
@@ -396,7 +404,7 @@ export async function masterInPlace(
     if (Math.abs(step) < 0.1) break;
     gainDb = Math.min(24, gainDb + step);
     res = dryRun(a, sampleRate, gainDb, ceilingDb);
-    const ok = res.limitDb <= MAX_LIMIT_DB + 0.1 && res.lufs + monoOffset <= TARGET_LUFS + 0.3;
+    const ok = res.limitDb <= MAX_LIMIT_DB + 0.1 && res.lufs + monoOffset <= targetLufs + 0.3;
     if (ok && (!best || res.lufs > best.res.lufs)) best = { gainDb, res };
   }
   if (best) { gainDb = best.gainDb; res = best.res; }
@@ -443,4 +451,5 @@ function sameSamples(a: Float32Array, b: Float32Array): boolean {
   return true;
 }
 
-const yieldUi = () => new Promise<void>(r => setTimeout(r, 0));
+/** Lets React paint and touches land between slices of long audio work. */
+export const yieldUi = () => new Promise<void>(r => setTimeout(r, 0));

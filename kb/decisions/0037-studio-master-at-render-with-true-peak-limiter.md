@@ -117,6 +117,25 @@ Escalated to the owner in the board's standard format. It needs:
 - **"Song volume" stays a slider, for listening in the Editor only, capped at 200 %.** The posted render ignores it and
   is always mastered to the target.
 
+**Owner decision, 2026-11-10 — target raised to −11 LUFS; the live master copies mastering's gain so editing, "Your song" and the post sound the same.** On the 2.2.0 closed-testing build the
+Editor was clearly quieter than the feed on both platforms. Measured on a synthetic voice + first-drum-preset mix at Editor
+levels (`autoLevel` voice, drums at 0.9, `RENDER_GAIN` 1/8): live playback at Song volume 100 % was −20.7 LUFS, the
+posted file −14.0, while uploads (never normalised) sit near −10. At −11 the limiter uses 3.3 dB of its 4 dB cap; −10
+hits the cap and lands at −10.6, so −11 is the practical maximum without squashing. A fixed live trim could not
+match the post: the owner's real mix measured −17.5 LUFS raw against −11.6 posted (the +24 dB gain cap), and the gap
+moves with every song. So the live master now follows an ESTIMATE of the mix's loudness
+(`src/screens/studio/liveLoudness.ts`): each take's K-weighted power per 100 ms hop is measured once and cached on
+the take data (WeakMap); the mix estimate adds those hops where the voices sit, plus the drum pattern's hits and
+the synth parts' chords, then applies the meter's 400 ms gating; `liveMakeupDb` mirrors `masterInPlace`
+(`TARGET_LUFS − mix`, capped at the +24 dB − 18 dB the render can add back). Verified against `measureLufs` to
+< 0.5 dB (voice) and < 0.7 dB (drums) in `liveLoudness.test.ts`. `LIVE_TRIM` 1.5 remains only until the first
+estimate is in. The library has no compressor/limiter node, so the safety curve's tanh knee stands in for the
+limiter on peaks; 200 % on the Song volume slider is listening-only and presses the mix into the curve. The Editor's
+level word follows (`levelWord`): **Low** = the post will land > 1.5 dB under the target (the render's gain cap),
+**Too loud** = live peaks more than 3 dB over the curve's full scale, i.e. past the master's 4 dB limiting cap,
+**Good** = anything else — loudness itself is no longer what the word judges. `masterInPlace` took an
+optional `targetLufs` parameter so the measurement can be repeated in a test. Feed-wide normalisation still open.
+
 **Implemented on `feat/editor-prototype` (uncommitted, not device-measured):** render at −18 dB with no shaper + 30 Hz
 high-pass; BS.1770-4 meter; stereo-linked look-ahead true-peak limiter (3 ms / 10 ms hold / 100 ms release; inter-sample
 peaks interpolated only at local maxima within 3 dB of the ceiling); loudness search on a 32-frame block summary, one

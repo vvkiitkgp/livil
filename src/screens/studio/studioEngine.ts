@@ -36,6 +36,7 @@ import { Platform } from 'react-native';
 import { androidLikelyMic, toMics, type Mic, type RawDevice } from '../../utils/audioDevices';
 import { clampRange, songLength, type SongRange } from './timeline';
 import { edgeRamp } from '../../utils/audioFx/level';
+import { dbToGain, estimateMixLufs, liveMakeupDb, postLufs, takeData, takeProfile, type Profile } from './liveLoudness';
 import type { Key } from '../../utils/magicTune';
 import { DRUM_IDS, isPrivateOutput, STEPS, synthClick, synthDrum, type DrumId, type DrumPattern } from '../../utils/drums';
 import {
@@ -166,8 +167,14 @@ function glide(param: AudioParam, v: number, now: number): void {
   param.setTargetAtTime(v, now, 0.015);
 }
 
-/** The live mix sits this far under the safety curve at Song volume 100% (−6 dB). */
-const LIVE_TRIM = 0.5;
+/**
+ * Live gain at Song volume 100% UNTIL the mix's loudness estimate is in (liveLoudness.ts):
+ * from then on the live master copies the gain mastering will apply to the post, so editing,
+ * "Your song" and the posted file sound the same. 1.5 is what a typical voice + drums mix
+ * needs (measured 2026-11-10), so the hand-over is a small step, not a jump. Until that day
+ * this was a fixed 0.5 (−6 dB) and the Editor played ~7 dB under its own post.
+ */
+const LIVE_TRIM = 1.5;
 /** Samples the level meter reads each time (~43 ms at 48 kHz). */
 const METER_FRAMES = 2048;
 
@@ -270,6 +277,13 @@ export class StudioEngine {
   private chunks: Float32Array[] = [];
   private recordRate = 44100;
   private clickGain: GainNode | null = null;
+  /** K-weighted power per 100 ms hop, per take (see liveLoudness.ts); keyed on the take data, so a dropped take frees it. */
+  private profiles = new WeakMap<Float32Array, Profile>();
+  private profiling = new WeakSet<Float32Array>();
+  /** What the live master multiplies the mix by at Song volume 100 % — mastering's gain, once estimated. */
+  private liveMakeup = LIVE_TRIM;
+  /** The mix's estimated loudness (LUFS), null until every take has a profile. */
+  private mixLufs: number | null = null;
   private clicks: { accent: AudioBuffer; beat: AudioBuffer } | null = null;
   private metronome = false;
   /** Click on the PHONE SPEAKER: the mic hears it, so the take is cleaned afterwards. */
@@ -303,10 +317,9 @@ export class StudioEngine {
     // the output to whatever the hardware runs at.
     this.ctx = new AudioContext({ sampleRate: STUDIO_SAMPLE_RATE });
     // Master bus → safety curve (fed at 1/HEADROOM, its curve scales back up). LIVE_TRIM keeps
-    // a normal mix 6 dB under the curve at Song volume 100%, so the slider is audible all the
-    // way to 200% instead of just pressing a loud mix harder into the ceiling (2026-11-02).
+    // a normal mix just under the curve's knee at Song volume 100% (see its comment).
     // 'explicit' = its own buffer (see ensureReverb on in-place processing).
-    this.master = new GainNode(this.ctx, { channelCountMode: 'explicit', gain: LIVE_TRIM / HEADROOM });
+    this.master = new GainNode(this.ctx, { channelCountMode: 'explicit', gain: this.liveMakeup / HEADROOM });
     const limiter = new WaveShaperNode(this.ctx, { curve: softLimitCurve() });
     this.master.connect(limiter);
     limiter.connect(this.ctx.destination);
@@ -457,11 +470,50 @@ export class StudioEngine {
       this.bufferFor(v.id, v.take);
     }
     if (this.drumGain) glide(this.drumGain.gain, p.drumsOn ? p.drumVolume : 0, ctx.currentTime);
-    if (this.master) glide(this.master.gain, (p.masterVolume * LIVE_TRIM) / HEADROOM, ctx.currentTime);
-    this.syncSynths(p);
     const r = songRange(p);
+    // The live master copies mastering: as loud as the post will be, for this very mix.
+    const est = estimateMixLufs(p, r, STUDIO_SAMPLE_RATE, this.profiles);
+    if (est === null) void this.profileTakes(p);
+    else { this.mixLufs = est; this.liveMakeup = dbToGain(liveMakeupDb(est)); }
+    if (this.master) glide(this.master.gain, (p.masterVolume * this.liveMakeup) / HEADROOM, ctx.currentTime);
+    this.applyClickGain();
+    this.syncSynths(p);
     this.rangeStart = r.start;
     this.length = r.end - r.start;
+  }
+
+  /**
+   * Measures the loudness profile of every take that has none yet (one pass each, yielding),
+   * then applies the project again so the live gain picks the estimate up. Takes already being
+   * measured are skipped, so overlapping calls never measure one twice.
+   */
+  private async profileTakes(p: Project): Promise<void> {
+    let measured = false;
+    for (const v of p.voices) {
+      const data = takeData(v);
+      if (this.profiles.has(data) || this.profiling.has(data)) continue;
+      this.profiling.add(data);
+      try {
+        this.profiles.set(data, await takeProfile(data, v.take.sampleRate));
+        measured = true;
+      } catch (e) {
+        console.log('[LIVIL][STUDIO] loudness profile failed', e);
+      } finally {
+        this.profiling.delete(data);
+      }
+    }
+    if (measured && this.ctx) this.setProject(this.project);
+  }
+
+  /** How loud the post will come out (LUFS), from the mix estimate; null until it is in or while silent. */
+  postLoudness(): number | null {
+    return this.mixLufs == null || !Number.isFinite(this.mixLufs) ? null : postLufs(this.mixLufs);
+  }
+
+  /** The click goes through the master, but it must not get louder or quieter with the mix. */
+  private applyClickGain(): void {
+    if (!this.clickGain) return;
+    this.clickGain.gain.value = this.metronome ? (this.speakerClick ? 0.35 : 0.7) / this.liveMakeup : 0;
   }
 
   /** Synth parts → their gains and note lists; renders any chord the project now needs. */
@@ -1061,8 +1113,7 @@ export class StudioEngine {
   setMetronome(on: boolean, headphones: boolean): void {
     this.metronome = on;
     this.speakerClick = on && !headphones;
-    // ÷ LIVE_TRIM: the click goes through the master, but it should not get quieter with it.
-    if (this.clickGain) this.clickGain.gain.value = on ? (headphones ? 0.7 : 0.35) / LIVE_TRIM : 0;
+    this.applyClickGain();
   }
 
   /**

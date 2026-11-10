@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { BpmStepper } from './BpmStepper';
 import { ClipTrack, peaksOf } from './ClipTrack';
 import { formatClock } from './RecordPanel';
 import { barSeconds, projectLength, songRange, type Project, type VoiceLane } from './studioEngine';
+import { levelWord } from './liveLoudness';
 import { SongTrim } from './SongTrim';
 import { roomPast, type SongRange } from './timeline';
 import { StudioSlider } from './StudioSlider';
@@ -25,6 +26,8 @@ type Props = {
   playhead: number;
   /** The live mix's peak, dB under the safety ceiling (engine.level), while playing. */
   level: number | null;
+  /** How loud the post will come out (LUFS), from the live estimate; null until known. */
+  postLevel: number | null;
   onTogglePlay: () => void;
   onSeek: (sec: number) => void;
   onLane: (lane: VoiceLane, restart: boolean) => void;
@@ -57,6 +60,8 @@ type Props = {
   onSave: () => void;
   /** On to "Your song": the finished mix, then Save draft or Create post. */
   onNext: () => void;
+  /** Once, when everything that sizes itself from a measurement has drawn at its real size. */
+  onDrawn?: () => void;
 };
 
 const LOOPS = [1, 2, 4, 8];
@@ -84,13 +89,14 @@ function MagicPill({ on, name, onPress }: { on: boolean; name: string; onPress: 
 }
 
 /**
- * How loud the live mix is, in words: Low (turn things up), Good, or Too loud (the safety
- * step is squashing it — turn Song volume or the loudest part down). The posted song is
- * mastered either way; this is for getting the balance right while you work.
+ * The level, in words (liveLoudness.levelWord): Low — the post will come out quiet, turn
+ * things up; Too loud — the peaks run past the limiter's cap, turn the loudest part down;
+ * Good — the live mix already plays as loud as the post will be.
  */
-function LevelReadout({ db }: { db: number | null }) {
+function LevelReadout({ db, post }: { db: number | null; post: number | null }) {
   if (db == null) return <Text style={styles.level}>Level · press play</Text>;
-  const [word, color] = db < -18 ? ['Low', COLORS.textSecondary] : db <= -3 ? ['Good', COLORS.success] : ['Too loud', COLORS.warning];
+  const word = levelWord(db, post);
+  const color = word === 'Low' ? COLORS.textSecondary : word === 'Good' ? COLORS.success : COLORS.warning;
   return (
     <Text style={styles.level} accessibilityLabel={`Level ${db} decibels, ${word}`}>
       {`Level ${db} dB · `}<Text style={{ color, fontWeight: '800' }}>{word}</Text>
@@ -101,6 +107,18 @@ function LevelReadout({ db }: { db: number | null }) {
 /** The Editor: transport, one row per voice, the drum loop, and the add-lanes under them. */
 export function EditorPanel(p: Props) {
   const { project } = p;
+  // The sliders, the timeline, the song trim, the clips and the Next button's border all size
+  // themselves from a measurement that arrives a frame after they first draw, so the first frame
+  // showed zero-width sliders, a squashed timeline and a plain "Next" (owner, 2026-11-10). The
+  // screen keeps its loading cover over the panel until `onDrawn`: the children measure in the
+  // root's first layout pass, and their re-render lands a frame or two later.
+  const drawnSent = useRef(false);
+  const onDrawn = p.onDrawn;
+  const onRootLayout = useCallback(() => {
+    if (drawnSent.current) return;
+    drawnSent.current = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => onDrawn?.())));
+  }, [onDrawn]);
   const [frozenView, setFrozenView] = useState<number | null>(null);
   const bar = barSeconds(project.bpm);
   const len = projectLength(project);
@@ -125,7 +143,7 @@ export function EditorPanel(p: Props) {
   const synthStep = p.playing ? Math.floor(playhead / (60 / project.bpm / 4)) % SYNTH_STEPS : -1;
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']} onLayout={onRootLayout}>
       <View style={styles.header}>
         <TouchableOpacity onPress={p.onClose} style={styles.headerSide} accessibilityLabel="Close the Editor" hitSlop={10}>
           <Icon name="close" size={22} color={COLORS.white} />
@@ -156,7 +174,7 @@ export function EditorPanel(p: Props) {
         </Pressable>
         <View>
           <Text style={styles.time}>{`${formatClock(playhead, true)} / ${formatClock(len)}`}</Text>
-          <LevelReadout db={p.level} />
+          <LevelReadout db={p.level} post={p.postLevel} />
         </View>
         <View style={{ flex: 1 }} />
         <BpmStepper bpm={project.bpm} onBpm={p.onBpm} settle />

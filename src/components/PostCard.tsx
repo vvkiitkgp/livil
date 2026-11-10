@@ -813,11 +813,9 @@ function PostCard({ post, onCommentsPress, onDeleted, fullCaption }: PostCardPro
               source={{ uri: post.track.thumbnailUrl }}
               style={styles.cover}
               resizeMode="cover"
-              placeholder={
-                <View style={styles.videoThumbIconWrap}>
-                  <Icon name="play" size={56} color={COLORS.textMuted} />
-                </View>
-              }
+              // No glyph of its own: the centred play button below already sits here, and a
+              // second, muted triangle peeked out behind it while the thumbnail loaded.
+              placeholder={<View />}
             />
             <View style={styles.videoBadge} pointerEvents="none">
               <Text style={styles.videoBadgeText}>VIDEO</Text>
@@ -1440,9 +1438,6 @@ const styles = StyleSheet.create({
   },
   tombstoneIconWrap: {
     marginBottom: 10,
-  },
-  videoThumbIconWrap: {
-    opacity: 0.6,
   },
   tombstoneTitle: {
     color: COLORS.white,
