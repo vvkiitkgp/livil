@@ -368,6 +368,14 @@ export default function FloatingPlayer() {
     transform: [{ translateX: circleX.value }, { translateY: circleY.value }, { scale: scaleAnim.value }],
   }));
 
+  // The white line (wave) shrinks to its centre and fades with the circle when a hold on the X
+  // closes the player. Otherwise it stayed for the 200 ms slide-out after the circle had gone.
+  const lineVanish = useSharedValue(1);
+  const lineStyle = useAnimatedStyle(() => ({
+    opacity: lineVanish.value,
+    transform: [{ scaleX: lineVanish.value }],
+  }));
+
   const springBack = () => {
     circleX.value = withSpring(0, SPRING_BACK);
     circleY.value = withSpring(0, SPRING_BACK);
@@ -388,11 +396,12 @@ export default function FloatingPlayer() {
   // A close leaves the circle shrunk away on the X. Put it back before the player next shows.
   useEffect(() => {
     if (!shouldShow) { return; }
-    cancelAnimation(circleX); cancelAnimation(circleY); cancelAnimation(scaleAnim);
+    cancelAnimation(circleX); cancelAnimation(circleY); cancelAnimation(scaleAnim); cancelAnimation(lineVanish);
     circleX.value = 0;
     circleY.value = 0;
     scaleAnim.value = 1;
-  }, [shouldShow, circleX, circleY, scaleAnim]);
+    lineVanish.value = 1;
+  }, [shouldShow, circleX, circleY, scaleAnim, lineVanish]);
 
   const cancelCloseHide = () => {
     if (closeHideTimerRef.current) {
@@ -434,6 +443,7 @@ export default function FloatingPlayer() {
       return;
     }
     console.log('[LIVIL][FP] held on X → closePlayer');
+    lineVanish.value = withTiming(0, { duration: 160 });
     scaleAnim.value = withTiming(0, { duration: 160 }, finished => {
       'worklet';
       if (finished) { runOnJS(closePlayer)(); }
@@ -703,6 +713,10 @@ export default function FloatingPlayer() {
       closeHoldingRef.current = false;
       cancelAnimation(scaleAnim);
       scaleAnim.value = withSpring(1.22, SPRING_PRESS);
+      // A touch inside the 160 ms close cancels it (the scale callback gets finished=false),
+      // so the player stays: bring the line back with the circle.
+      cancelAnimation(lineVanish);
+      lineVanish.value = 1;
     })
     .onStart(() => {
       // Any real drag = the user discovered the circle is movable → stop the
@@ -908,7 +922,9 @@ export default function FloatingPlayer() {
           {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
               before the pill expands, and only re-ripples once it collapses back —
               during a jam the pill is always expanded, so the wave simply stays off. */}
-          <WaveVisualizer playing={isPlaying} suppressed={isExpanded || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
+          <Reanimated.View style={lineStyle}>
+            <WaveVisualizer playing={isPlaying} suppressed={isExpanded || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
+          </Reanimated.View>
         </Animated.View>
 
         {/* ── Draggable circle ── */}
