@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-612 TypeScript file(s) under `src/`, 121,793 lines.
+611 TypeScript file(s) under `src/`, 121,551 lines.
 
 ## Size hotspots
 
@@ -28,7 +28,7 @@ reading alone (Constitution P28).
 |---|---:|
 | `src/screens/main/ConversationScreen.tsx` | 3253 |
 | `src/screens/main/UploadScreen.tsx` | 2596 |
-| `src/components/FullScreenPlayer.tsx` | 2487 |
+| `src/components/FullScreenPlayer.tsx` | 2493 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/components/PostCard.tsx` | 1506 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
@@ -38,7 +38,7 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/components/FloatingPlayer.tsx` | 1140 |
+| `src/components/FloatingPlayer.tsx` | 1127 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
@@ -197,15 +197,15 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,132 lines.
+190 file(s), 36,890 lines.
 
 | File | Lines |
 |---|---:|
-| `src/components/FullScreenPlayer.tsx` | 2487 |
+| `src/components/FullScreenPlayer.tsx` | 2493 |
 | `src/components/PostCard.tsx` | 1506 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 1140 |
+| `src/components/FloatingPlayer.tsx` | 1127 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |
@@ -241,7 +241,6 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ShareProfileSheet.tsx` | 240 |
 | `src/components/StoryReportModal.tsx` | 239 |
 | `src/components/AppleSignInButton.tsx` | 233 |
-| `src/components/WaveVisualizer.tsx` | 233 |
 | `src/components/RepostChatCard.tsx` | 228 |
 | `src/components/__tests__/MentionText.test.tsx` | 218 |
 | `src/components/PostReportModal.tsx` | 217 |
@@ -295,19 +294,19 @@ case the call fails silently wherever its result is discarded.
 | `src/components/__tests__/GradientBorder.test.tsx` | 145 |
 | `src/components/NotificationPermissionModal.tsx` | 140 |
 | `src/components/ShareRepostSheet.tsx` | 140 |
-| `src/components/__tests__/FloatingPlayer.slideOut.test.tsx` | 139 |
+| `src/components/__tests__/FloatingPlayer.slideOut.test.tsx` | 137 |
+| `src/components/PlayerCloseTarget.tsx` | 132 |
 | `src/components/StoryCard.tsx` | 132 |
 | `src/components/PostCardSkeleton.tsx` | 131 |
 | `src/components/UploadStep.tsx` | 131 |
 | `src/components/onboarding/HoloShimmer.tsx` | 130 |
-| `src/components/PlayerCloseTarget.tsx` | 129 |
 | `src/components/__tests__/ProfileTabBar.test.tsx` | 129 |
 | `src/components/DoubleTapLike.tsx` | 127 |
 | `src/components/OfflineBanner.tsx` | 127 |
 | `src/components/HomeFeedTabs.tsx` | 125 |
 | `src/components/SettingsHighlightCard.tsx` | 124 |
-| `src/components/__tests__/PlayerCloseTarget.test.tsx` | 121 |
 | `src/components/ProfilePhotoViewer.tsx` | 120 |
+| `src/components/__tests__/PlayerCloseTarget.test.tsx` | 119 |
 | `src/components/ProfileGridCard.tsx` | 118 |
 | `src/components/SpotifyTrackSheet.tsx` | 117 |
 | `src/components/ArtGlow.tsx` | 116 |
@@ -331,8 +330,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/ChatMediaPreview.tsx` | 94 |
 | `src/components/SettingsSection.tsx` | 93 |
 | `src/components/DetailActionSheet.tsx` | 92 |
-| `src/components/EqualizerBars.tsx` | 89 |
 | `src/components/auth/usernameCheck.tsx` | 89 |
+| `src/components/EqualizerBars.tsx` | 88 |
 | `src/components/MutualsLine.tsx` | 87 |
 | `src/components/__tests__/ConfirmActionModal.test.tsx` | 83 |
 | `src/components/SpotifyChatCard.tsx` | 82 |
