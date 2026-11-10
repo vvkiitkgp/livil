@@ -249,6 +249,7 @@ export default function StudioScreen() {
   // Playhead and level meter while playing. The level is kept to whole dB so the Editor only
   // re-renders for it when the reading actually changes.
   const [level, setLevel] = useState<number | null>(null);
+  const [postLevel, setPostLevel] = useState<number | null>(null);
   useEffect(() => {
     if (!playing) { setLevel(null); return; }
     let tick = 0;
@@ -257,6 +258,8 @@ export default function StudioScreen() {
       if (++tick % 4 === 0) {
         const db = engine.level();
         setLevel(db == null || !Number.isFinite(db) ? null : Math.round(db));
+        const post = engine.postLoudness();
+        setPostLevel(post == null ? null : Math.round(post * 10) / 10);
       }
     }, 50);
     return () => clearInterval(id);
@@ -596,6 +599,7 @@ export default function StudioScreen() {
           playing={playing}
           playhead={playhead}
           level={level}
+          postLevel={postLevel}
           onTogglePlay={togglePlay}
           onSeek={sec => { engine.seek(sec); setPlayhead(sec); }}
           onLane={(lane, restart) => update(p => ({ ...p, voices: p.voices.map(v => (v.id === lane.id ? lane : v)) }), restart)}

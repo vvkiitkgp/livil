@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-608 TypeScript file(s) under `src/`, 120,934 lines.
+610 TypeScript file(s) under `src/`, 121,314 lines.
 
 ## Size hotspots
 
@@ -34,7 +34,7 @@ reading alone (Constitution P28).
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1331 |
+| `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -44,7 +44,7 @@ reading alone (Constitution P28).
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/screens/studio/StudioScreen.tsx` | 708 |
+| `src/screens/studio/StudioScreen.tsx` | 714 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,136 lines.
+79 file(s), 36,516 lines.
 
 | File | Lines |
 |---|---:|
@@ -120,13 +120,13 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1331 |
+| `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/screens/studio/StudioScreen.tsx` | 708 |
+| `src/screens/studio/StudioScreen.tsx` | 714 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -138,8 +138,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
+| `src/screens/studio/EditorPanel.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
-| `src/screens/studio/EditorPanel.tsx` | 400 |
 | `src/screens/studio/TunePanel.tsx` | 399 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
 | `src/screens/main/PrivacyDataScreen.tsx` | 359 |
@@ -170,6 +170,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/BlockedAccountsScreen.tsx` | 204 |
 | `src/screens/main/AlbumDetailScreen.tsx` | 202 |
 | `src/screens/studio/ClipTrack.tsx` | 201 |
+| `src/screens/studio/liveLoudness.ts` | 197 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
@@ -177,6 +178,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/renderMix.ts` | 166 |
 | `src/screens/main/AddToLivilScreen.tsx` | 161 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
+| `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
 | `src/screens/studio/SongTrim.tsx` | 116 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |

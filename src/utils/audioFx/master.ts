@@ -51,7 +51,7 @@ export function kWeighting(fs: number): [Biquad, Biquad] {
 }
 
 /** One channel's K-weighting (both stages), inlined — this runs on every sample. */
-class KFilter {
+export class KFilter {
   private x1 = 0; private x2 = 0; private y1 = 0; private y2 = 0;
   private u1 = 0; private u2 = 0; private v1 = 0; private v2 = 0;
   private b0: number; private b1: number; private b2: number; private a1: number; private a2: number;
@@ -74,7 +74,7 @@ class KFilter {
  * Integrated loudness from 100 ms hop energies (Σ K-weighted y² over channels, `hopLen`
  * frames each): 400 ms blocks = 4 hops, absolute gate −70 LUFS, relative gate −10 LU.
  */
-function gatedLufs(hops: ArrayLike<number>, count: number, hopLen: number): number {
+export function gatedLufs(hops: ArrayLike<number>, count: number, hopLen: number): number {
   const L = (p: number) => -0.691 + 10 * Math.log10(p);
   const z: number[] = [];
   for (let j = 0; j + 3 < count; j++) z.push((hops[j] + hops[j + 1] + hops[j + 2] + hops[j + 3]) / (4 * hopLen));

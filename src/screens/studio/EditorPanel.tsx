@@ -13,6 +13,7 @@ import { BpmStepper } from './BpmStepper';
 import { ClipTrack, peaksOf } from './ClipTrack';
 import { formatClock } from './RecordPanel';
 import { barSeconds, projectLength, songRange, type Project, type VoiceLane } from './studioEngine';
+import { levelWord } from './liveLoudness';
 import { SongTrim } from './SongTrim';
 import { roomPast, type SongRange } from './timeline';
 import { StudioSlider } from './StudioSlider';
@@ -25,6 +26,8 @@ type Props = {
   playhead: number;
   /** The live mix's peak, dB under the safety ceiling (engine.level), while playing. */
   level: number | null;
+  /** How loud the post will come out (LUFS), from the live estimate; null until known. */
+  postLevel: number | null;
   onTogglePlay: () => void;
   onSeek: (sec: number) => void;
   onLane: (lane: VoiceLane, restart: boolean) => void;
@@ -84,13 +87,14 @@ function MagicPill({ on, name, onPress }: { on: boolean; name: string; onPress: 
 }
 
 /**
- * How loud the live mix is, in words: Low (turn things up), Good, or Too loud (the safety
- * step is squashing it — turn Song volume or the loudest part down). The posted song is
- * mastered either way; this is for getting the balance right while you work.
+ * The level, in words (liveLoudness.levelWord): Low — the post will come out quiet, turn
+ * things up; Too loud — the peaks run past the limiter's cap, turn the loudest part down;
+ * Good — the live mix already plays as loud as the post will be.
  */
-function LevelReadout({ db }: { db: number | null }) {
+function LevelReadout({ db, post }: { db: number | null; post: number | null }) {
   if (db == null) return <Text style={styles.level}>Level · press play</Text>;
-  const [word, color] = db < -18 ? ['Low', COLORS.textSecondary] : db <= -3 ? ['Good', COLORS.success] : ['Too loud', COLORS.warning];
+  const word = levelWord(db, post);
+  const color = word === 'Low' ? COLORS.textSecondary : word === 'Good' ? COLORS.success : COLORS.warning;
   return (
     <Text style={styles.level} accessibilityLabel={`Level ${db} decibels, ${word}`}>
       {`Level ${db} dB · `}<Text style={{ color, fontWeight: '800' }}>{word}</Text>
@@ -156,7 +160,7 @@ export function EditorPanel(p: Props) {
         </Pressable>
         <View>
           <Text style={styles.time}>{`${formatClock(playhead, true)} / ${formatClock(len)}`}</Text>
-          <LevelReadout db={p.level} />
+          <LevelReadout db={p.level} post={p.postLevel} />
         </View>
         <View style={{ flex: 1 }} />
         <BpmStepper bpm={project.bpm} onBpm={p.onBpm} settle />
