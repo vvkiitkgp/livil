@@ -182,13 +182,14 @@ export default function StudioScreen() {
         setLoadStep({ detail: 'Reading your recordings…', progress: 0 });
         // Decoded at the Editor's rate, except takes still owed a click repair: those come at their
         // own rate, are repaired, THEN converted (conversion smears a click past repair).
-        const d = await loadDraft(me, openDraftId, engine.sampleRate, CLICK_REPAIR_VERSION, (i, n) => setLoadStep({ detail: 'Reading your recordings…', progress: (0.4 * i) / n }));
+        // Reading the recordings is most of the wait: 70 % of the bar, the fixes after it 30 %.
+        const d = await loadDraft(me, openDraftId, engine.sampleRate, CLICK_REPAIR_VERSION, (i, n) => setLoadStep({ detail: 'Reading your recordings…', progress: (0.7 * i) / n }));
         if (!alive) return;
         const voices = [];
         let repaired = 0;
         for (const v of d.project.voices) {
-          const share = 0.6 / d.project.voices.length;
-          const at = 0.4 + share * voices.length;
+          const share = 0.3 / d.project.voices.length;
+          const at = 0.7 + share * voices.length;
           let take = v.take;
           if ((take.clickRepair ?? 0) < CLICK_REPAIR_VERSION) {
             setLoadStep({ detail: 'Removing recorder clicks…', progress: at });

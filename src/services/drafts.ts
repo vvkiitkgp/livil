@@ -151,22 +151,29 @@ export async function loadDraft(
   id: string,
   sampleRate: number,
   repairVersion: number,
-  onTake?: (done: number, total: number) => void,
+  /** After each recording file is read (2–3 per voice): files done, files in all. */
+  onFile?: (done: number, total: number) => void,
 ): Promise<{ project: Project; title: string; createdAt: string; converted: number }> {
   if (!isSafeId(userId) || !isSafeId(id)) throw new Error('Bad draft id');
   const d = parseDraftFile(await studioFiles.readText(`${userId}/${id}/project.json`));
   if (!d || d.id !== id) throw new Error("This draft can't be opened.");
   const base = `${await studioFiles.root()}/${userId}/${id}`;
   const decoded = new Map<string, Float32Array>();
+  // Progress per FILE, not per voice: reading is most of the wait, and a one-voice draft used to
+  // report nothing until all of it was read (the bar sat empty, then the screen closed).
+  const totalFiles = d.project.voices.reduce((n, v) => n + (v.take.files.tuned ? 3 : 2), 0);
+  let filesDone = 0;
   const read = async (rel: string, rate: number) => {
     const key = `${rel}@${rate}`;
-    const hit = decoded.get(key);
-    if (hit) return hit;
-    const buf = await decodeAudioData(`file://${base}/${rel}`, rate);
-    // The decoded channel itself, not a copy of it: a copy doubled every take in memory while
-    // the decoded original waited for the garbage collector (see CLAUDE.md, Editor memory).
-    const samples = buf.getChannelData(0);
-    decoded.set(key, samples);
+    let samples = decoded.get(key);
+    if (!samples) {
+      const buf = await decodeAudioData(`file://${base}/${rel}`, rate);
+      // The decoded channel itself, not a copy of it: a copy doubled every take in memory while
+      // the decoded original waited for the garbage collector (see CLAUDE.md, Editor memory).
+      samples = buf.getChannelData(0);
+      decoded.set(key, samples);
+    }
+    onFile?.(++filesDone, totalFiles);
     return samples;
   };
   const voices: VoiceLane[] = [];
@@ -188,7 +195,6 @@ export async function loadDraft(
         tuned: t.files.tuned ? await read(t.files.tuned, rate) : null,
       },
     });
-    onTake?.(voices.length, d.project.voices.length);
   }
   return { project: { ...d.project, voices }, title: d.title, createdAt: d.createdAt, converted };
 }

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,580 lines.
+611 TypeScript file(s) under `src/`, 121,602 lines.
 
 ## Size hotspots
 
@@ -44,7 +44,7 @@ reading alone (Constitution P28).
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/screens/studio/StudioScreen.tsx` | 716 |
+| `src/screens/studio/StudioScreen.tsx` | 717 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-80 file(s), 36,782 lines.
+80 file(s), 36,798 lines.
 
 | File | Lines |
 |---|---:|
@@ -126,7 +126,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/screens/studio/StudioScreen.tsx` | 716 |
+| `src/screens/studio/StudioScreen.tsx` | 717 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -182,9 +182,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
 | `src/screens/studio/SongTrim.tsx` | 116 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
+| `src/screens/studio/StudioLoading.tsx` | 114 |
 | `src/screens/studio/PitchTrail.tsx` | 112 |
 | `src/screens/studio/EffectsSheet.tsx` | 111 |
-| `src/screens/studio/StudioLoading.tsx` | 99 |
 | `src/screens/studio/finishTake.ts` | 83 |
 | `src/screens/studio/__tests__/timeline.test.ts` | 81 |
 | `src/screens/studio/__tests__/BpmStepper.test.tsx` | 80 |
@@ -395,7 +395,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Services
 
-128 file(s), 24,260 lines.
+128 file(s), 24,266 lines.
 
 | File | Lines |
 |---|---:|
@@ -417,7 +417,7 @@ case the call fails silently wherever its result is discarded.
 | `src/services/conversations.ts` | 373 |
 | `src/services/jamRooms.ts` | 368 |
 | `src/services/__tests__/uploadStallWatchdog.test.ts` | 317 |
-| `src/services/drafts.ts` | 299 |
+| `src/services/drafts.ts` | 305 |
 | `src/services/jamRealtime.ts` | 298 |
 | `src/services/relationships.ts` | 275 |
 | `src/services/gifs.ts` | 245 |
