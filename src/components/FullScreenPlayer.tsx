@@ -1350,14 +1350,16 @@ export default function FullScreenPlayer() {
   useEffect(() => {
     if (isFullScreenOpen) {
       // Start at the invisible dot at the floating-player circle, then spring
-      // outward to full screen with a clear, graceful bounce (slower speed than
-      // before so the overshoot reads as a pop bursting from the circle, not a snap).
+      // outward to full screen. Barely any bounce: 12/10 overshot to 114% of the
+      // screen and took ~530 ms to settle, so the pill (OPEN_MORPH_DELAY = 220 ms in
+      // FloatingPlayer) opened while the player was still shrinking back (owner,
+      // 2026-11-10). 3/14 peaks at ~100.3%, is 98% open at 220 ms, settles in ~250 ms.
       posYAnim.setValue(convergeY);
       scaleAnim.setValue(0.02);
       opacityAnim.setValue(0);
       Animated.parallel([
-        Animated.spring(posYAnim,  { toValue: 0, speed: 10, bounciness: 12, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, speed: 10, bounciness: 12, useNativeDriver: true }),
+        Animated.spring(posYAnim,  { toValue: 0, speed: 14, bounciness: 3, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, speed: 14, bounciness: 3, useNativeDriver: true }),
         Animated.timing(opacityAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
       ]).start();
     } else {
