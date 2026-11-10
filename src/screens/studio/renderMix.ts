@@ -28,12 +28,19 @@ const RENDER_GAIN = 1 / 8; // −18 dB
 const TAIL_SEC = 1;
 
 export async function renderMix(project: Project, onProgress?: (fraction: number) => void): Promise<Mix> {
+  // Step log: a mix that never finishes must say where it stopped (iPhone, 2026-11-10: "Mixing
+  // your song…" forever, Back dead, the JS thread not even pausable from the debugger).
+  const t0 = Date.now();
+  const step = (what: string) => console.log(`[LIVIL][MIX] ${what} +${Date.now() - t0} ms`);
+  step(`start: ${project.voices.length} voice(s), ${project.synths.length} synth part(s), drums ${project.drumsOn ? 'on' : 'off'}`);
   const sampleRate = project.voices[0]?.take.sampleRate ?? 48000;
   const { start: rs, end: re } = songRange(project);
   const seconds = re - rs;
   const songFrames = Math.max(1, Math.round(seconds * sampleRate));
   const length = songFrames + Math.round(TAIL_SEC * sampleRate);
+  step(`offline context: ${length} frames at ${sampleRate} Hz`);
   const ctx = new OfflineAudioContext({ numberOfChannels: 2, length, sampleRate });
+  step('offline context made');
   // 'explicit': each node gets its own buffer (see studioEngine's notes on in-place processing).
   const own = { channelCountMode: 'explicit' as const };
   const master = new GainNode(ctx, { ...own, gain: RENDER_GAIN });
@@ -56,6 +63,7 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
   onProgress?.(0.02);
   for (const v of project.voices) {
     await yieldUi();
+    step(`voice ${v.id}: pitch ${v.fx.pitch}, reverb ${v.fx.reverb.on ? 'on' : 'off'}, loops ${v.loops}`);
     const chosen = v.tuneOn && v.take.tuned ? v.take.tuned : v.take.raw;
     // Every take should already be at this rate (drafts are converted on open); never play one
     // at the wrong speed.
@@ -98,6 +106,7 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
     }
   }
 
+  step('voices scheduled');
   const hasBeat = project.drumsOn && DRUM_IDS.some(id => project.pattern[id].some(Boolean));
   if (hasBeat) {
     const drums = new GainNode(ctx, { ...own, gain: project.drumVolume });
@@ -123,6 +132,8 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
     const firstStep = Math.round(rs / stepSec);
     const rendered = new Map<string, ReturnType<typeof buffer>>();
     for (const part of project.synths) {
+      await yieldUi();
+      step(`synth ${part.sound}: rendering its chords`);
       const hits = synthHits(part);
       const gain = new GainNode(ctx, { ...own, gain: part.volume });
       gain.connect(master);
@@ -149,9 +160,12 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
 
   await yieldUi();
   onProgress?.(0.1);
+  step('graph built, rendering');
   const out = await ctx.startRendering();
+  step('rendered');
   onProgress?.(0.3);
   const channels = [new Float32Array(out.getChannelData(0)), new Float32Array(out.getChannelData(out.numberOfChannels > 1 ? 1 : 0))];
+  step('mastering');
   const report = await masterInPlace(channels, sampleRate, f => onProgress?.(0.3 + 0.7 * f));
   console.log(`[LIVIL][MASTER] ${JSON.stringify({ ...report, inputLufs: +report.inputLufs.toFixed(1), lufs: +report.lufs.toFixed(1), truePeakDb: +report.truePeakDb.toFixed(2), gainDb: +report.gainDb.toFixed(1), limitDb: +report.limitDb.toFixed(1) })}`);
   const end = finishEnds(channels, sampleRate, songFrames);

@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-610 TypeScript file(s) under `src/`, 121,314 lines.
+610 TypeScript file(s) under `src/`, 121,330 lines.
 
 ## Size hotspots
 
@@ -44,7 +44,7 @@ reading alone (Constitution P28).
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/screens/studio/StudioScreen.tsx` | 714 |
+| `src/screens/studio/StudioScreen.tsx` | 716 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-79 file(s), 36,516 lines.
+79 file(s), 36,532 lines.
 
 | File | Lines |
 |---|---:|
@@ -126,7 +126,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
-| `src/screens/studio/StudioScreen.tsx` | 714 |
+| `src/screens/studio/StudioScreen.tsx` | 716 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
@@ -173,9 +173,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/liveLoudness.ts` | 197 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
+| `src/screens/studio/renderMix.ts` | 180 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/studio/renderMix.ts` | 166 |
 | `src/screens/main/AddToLivilScreen.tsx` | 161 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |

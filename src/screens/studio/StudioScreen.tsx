@@ -439,6 +439,7 @@ export default function StudioScreen() {
    */
   const mixingRef = useRef<{ of: Project; done: Promise<void> } | null>(null);
   const goFinal = useCallback(async () => {
+    console.log(`[LIVIL][MIX] Next tapped (mixed=${mix?.of === project}, in flight=${!!mixingRef.current})`);
     engine.stop();
     setPlaying(false);
     const r = songRange(project);
@@ -456,11 +457,12 @@ export default function StudioScreen() {
     const done = (async () => {
       // Wait for the render in flight, but never forever: if it has hung, a new Next must still
       // be able to start (the cost is two renders in memory for that one bad case).
-      if (previous) { await Promise.race([previous.done, new Promise<void>(r => setTimeout(r, 15000))]); }
+      if (previous) { console.log('[LIVIL][MIX] waiting for the mix in flight'); await Promise.race([previous.done, new Promise<void>(r => setTimeout(r, 15000))]); }
       // Let React paint "Your song" with its spinner before the mix starts: the render's set-up
       // is synchronous, and started in the same tick it left the Editor on screen, frozen and
       // apparently still tappable, with no sign that Next had done anything.
       await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      console.log('[LIVIL][MIX] spinner painted, mixing');
       try {
         const t0 = Date.now();
         const m = await renderMix(project, f => { if (current()) setMixProgress(f); });
