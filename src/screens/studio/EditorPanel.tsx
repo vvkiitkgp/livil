@@ -60,6 +60,8 @@ type Props = {
   onSave: () => void;
   /** On to "Your song": the finished mix, then Save draft or Create post. */
   onNext: () => void;
+  /** Once, when everything that sizes itself from a measurement has drawn at its real size. */
+  onDrawn?: () => void;
 };
 
 const LOOPS = [1, 2, 4, 8];
@@ -108,15 +110,15 @@ export function EditorPanel(p: Props) {
   // The sliders, the timeline, the song trim, the clips and the Next button's border all size
   // themselves from a measurement that arrives a frame after they first draw, so the first frame
   // showed zero-width sliders, a squashed timeline and a plain "Next" (owner, 2026-11-10). The
-  // panel stays invisible until the frame after those measurements have been drawn.
-  const [settled, setSettled] = useState(false);
-  const settling = useRef(false);
+  // screen keeps its loading cover over the panel until `onDrawn`: the children measure in the
+  // root's first layout pass, and their re-render lands a frame or two later.
+  const drawnSent = useRef(false);
+  const onDrawn = p.onDrawn;
   const onRootLayout = useCallback(() => {
-    if (settling.current) return;
-    settling.current = true;
-    // Children measure in this same layout pass; their re-render lands a frame later.
-    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => setSettled(true))));
-  }, []);
+    if (drawnSent.current) return;
+    drawnSent.current = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => onDrawn?.())));
+  }, [onDrawn]);
   const [frozenView, setFrozenView] = useState<number | null>(null);
   const bar = barSeconds(project.bpm);
   const len = projectLength(project);
@@ -141,7 +143,7 @@ export function EditorPanel(p: Props) {
   const synthStep = p.playing ? Math.floor(playhead / (60 / project.bpm / 4)) % SYNTH_STEPS : -1;
 
   return (
-    <SafeAreaView style={[styles.root, !settled && styles.settling]} edges={['top', 'bottom']} onLayout={onRootLayout}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']} onLayout={onRootLayout}>
       <View style={styles.header}>
         <TouchableOpacity onPress={p.onClose} style={styles.headerSide} accessibilityLabel="Close the Editor" hitSlop={10}>
           <Icon name="close" size={22} color={COLORS.white} />
@@ -410,7 +412,6 @@ const styles = StyleSheet.create({
   addText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '700' },
   // 24 like Upload: an iOS page-sheet modal reaches the screen's bottom edge with no safe
   // area of its own, so a smaller gap put the button's glow on the edge (2026-10-31).
-  settling: { opacity: 0 },
   footer: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: COLORS.border },
   hint: { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, textAlign: 'center', marginTop: 6 },
 });

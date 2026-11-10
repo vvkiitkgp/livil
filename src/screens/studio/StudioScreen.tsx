@@ -121,6 +121,9 @@ export default function StudioScreen() {
   const [diskStale, setDiskStale] = useState(false);
   const [saving, setSaving] = useState(false);
   const [opening, setOpening] = useState(!!openDraftId);
+  // The Editor panel has drawn at its real size (see `cover`); never reset — later panels
+  // swap in without a loading screen.
+  const [editorDrawn, setEditorDrawn] = useState(false);
   /** What opening a draft is doing, for the loading screen. */
   const [loadStep, setLoadStep] = useState<{ detail: string; progress: number | null }>({ detail: 'Getting the studio ready…', progress: null });
   /** The finished song for the "Your song" step, and the project it was mixed from. */
@@ -544,9 +547,30 @@ export default function StudioScreen() {
 
   if (phase === 'editor') seenEditor.current = true;
 
-  if (!ready || opening) {
-    return <StudioLoading title={opening ? 'Opening your draft' : 'Opening the Editor'} detail={opening ? loadStep.detail : 'Getting the studio ready…'} progress={opening ? loadStep.progress : null} />;
-  }
+  const markEditorDrawn = useCallback(() => setEditorDrawn(true), []);
+  // Never leave the cover up if the panel's signal is lost.
+  useEffect(() => {
+    if (editorDrawn || phase !== 'editor' || !ready || opening) return;
+    const t = setTimeout(() => setEditorDrawn(true), 1500);
+    return () => clearTimeout(t);
+  }, [editorDrawn, phase, ready, opening]);
+
+  // The loading screen stays over the Editor until the Editor has drawn at its real size (its
+  // sliders and timeline measure themselves a frame after they first draw), as one more step:
+  // "Getting the Editor ready…". It is ONE StudioLoading in a fixed place in the tree, so its
+  // animations carry on instead of restarting when the loading ends.
+  const loading = !ready || opening;
+  const covered = loading || (phase === 'editor' && !editorDrawn);
+  const cover = covered ? (
+    <View style={StyleSheet.absoluteFill}>
+      <StudioLoading
+        title={opening || (!loading && openDraftId) ? 'Opening your draft' : 'Opening the Editor'}
+        detail={loading ? (opening ? loadStep.detail : 'Getting the studio ready…') : 'Getting the Editor ready…'}
+        progress={loading ? (opening ? loadStep.progress : null) : (openDraftId ? 1 : null)}
+      />
+    </View>
+  ) : null;
+  if (loading) return <View style={styles.root}>{cover}</View>;
 
   return (
     <View style={styles.root}>
@@ -598,6 +622,7 @@ export default function StudioScreen() {
       )}
       {phase === 'editor' && (
         <EditorPanel
+          onDrawn={markEditorDrawn}
           project={project}
           playing={playing}
           playhead={playhead}
@@ -706,6 +731,7 @@ export default function StudioScreen() {
         onConfirm={() => void exclusive('Saving your draft…', async () => { if (await save()) leave(); })}
         onCancel={() => setConfirmExit(false)}
       />
+      {cover}
     </View>
   );
 }
