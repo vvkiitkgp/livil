@@ -91,12 +91,12 @@ describe('PlayerCloseTarget', () => {
     const tree = render(false, onHoldComplete);
     expect(label(tree)).toBe('Drag on X to close');
     update(tree, true, onHoldComplete);
-    expect(label(tree)).toBe('Keep holding 2');
+    expect(label(tree)).toBe('Keep holding for 2 seconds to close');
     advance(1000);
-    expect(label(tree)).toBe('Keep holding 1');
+    expect(label(tree)).toBe('Keep holding for 1 second to close');
     update(tree, false, onHoldComplete);
     update(tree, true, onHoldComplete);
-    expect(label(tree)).toBe('Keep holding 2');
+    expect(label(tree)).toBe('Keep holding for 2 seconds to close');
   });
 
   it('calls the callback from the latest render', () => {
