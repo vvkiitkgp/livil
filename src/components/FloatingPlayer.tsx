@@ -467,7 +467,7 @@ export default function FloatingPlayer() {
   // The pill opens with the full-screen player, for audio and video alike. It must
   // NOT wait for a video's first frame: it used to, and on a slow network the handle
   // sat as a bare line for up to 4 s after full screen had opened (owner, 2026-11-10).
-  // Full screen already shows the cover while the video loads.
+  // Full screen shows its own loading spinner until the video's first frame.
   const morphExpanded = !!activeJam || isFullScreenOpen;
 
   const morphAnim  = useRef(new Animated.Value(0)).current;

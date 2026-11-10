@@ -1789,13 +1789,10 @@ export default function FullScreenPlayer() {
             // No `metadata` — GAP owns the lock-screen now-playing info. A second
             // source.metadata here could try to claim the MediaSession.
             source={{ uri: nowPlaying.videoUrl }}
-            // Poster covers the brief gap between source mount and first decoded
-            // frame so the user sees the thumbnail instead of a black flash.
-            poster={
-              nowPlaying.thumbnailUrl
-                ? { source: { uri: nowPlaying.thumbnailUrl }, resizeMode: 'cover' }
-                : undefined
-            }
+            // No `poster`: until the first frame decodes the screen stays black
+            // (styles.video) under the buffering spinner. The thumbnail used to
+            // stand in, and on a slow load it read as a still image that
+            // suddenly started moving (owner, 2026-11-10).
             style={styles.video}
             resizeMode={aspectKnown ? 'contain' : 'cover'}
             // Follow the engine's play/pause: activePostId is the post GAP is
@@ -1834,8 +1831,8 @@ export default function FullScreenPlayer() {
             onError={(e) => {
               // The frame failed to decode, but GAP is still playing the audio
               // fine on its own surface — so DON'T advance the queue here (that
-              // would skip a perfectly audible track). Just drop the spinner and
-              // let the cover art / poster stand in for the missing picture.
+              // would skip a perfectly audible track). Just drop the spinner; the
+              // frame stays black, with the title and controls over it.
               console.warn('[LIVIL][FS] frame onError (audio unaffected)', e?.error ?? e);
               setFsBuffering(false);
               // Release the audio gate — the picture is gone, but the audio plays
