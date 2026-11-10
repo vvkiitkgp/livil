@@ -9,8 +9,14 @@
  * milliseconds around a peak instead, which you don't hear as fuzz.
  */
 
-/** Owner decision 2026-11-02: the streaming standard (Spotify/YouTube), not "loud". */
-export const TARGET_LUFS = -14;
+/**
+ * Owner decision 2026-11-10: as loud as the feed. Livil does not normalise what people upload
+ * (those land around −10 LUFS), so the streaming standard chosen on 2026-11-02 (−14) left every
+ * Editor song 3–4 dB quieter than the songs around it. −11 is the loudest the 4 dB limiting cap
+ * reaches cleanly on a voice + drums mix (measured: −11.1 LUFS at 3.3 dB of limiting; −10 hits
+ * the cap and lands at −10.6 anyway).
+ */
+export const TARGET_LUFS = -11;
 /** True-peak ceiling: −1 dBTP keeps the AAC copy listeners stream from clipping. */
 export const CEILING_DBTP = -1;
 /** At most this much limiting at the loud moments — ship quieter rather than squash. */
@@ -369,6 +375,8 @@ export async function masterInPlace(
   channels: Float32Array[],
   sampleRate: number,
   onProgress?: (fraction: number) => void,
+  /** The loudness to aim for; the app's target unless a test asks otherwise. */
+  targetLufs: number = TARGET_LUFS,
 ): Promise<MasterReport> {
   const t0 = Date.now();
   // Dual-mono (everything in the Editor is mono today): master one channel, copy it over.
@@ -383,11 +391,11 @@ export async function masterInPlace(
 
   // Aim at the target, but never limit harder than MAX_LIMIT_DB. Raising the gain by Δ raises
   // the limiting by up to Δ, so a step up is capped at the room left under the cap.
-  let gainDb = Math.min(24, TARGET_LUFS - inputLufs);
+  let gainDb = Math.min(24, targetLufs - inputLufs);
   let res = dryRun(a, sampleRate, gainDb, ceilingDb);
   let best = res.limitDb <= MAX_LIMIT_DB + 0.1 ? { gainDb, res } : null;
   for (let k = 0; k < 6; k++) {
-    const need = TARGET_LUFS - (res.lufs + monoOffset);
+    const need = targetLufs - (res.lufs + monoOffset);
     let step: number;
     if (res.limitDb > MAX_LIMIT_DB + 0.1) step = MAX_LIMIT_DB - res.limitDb - 0.1;
     else if (need > 0.2) step = Math.min(need, Math.max(0, MAX_LIMIT_DB - res.limitDb));
@@ -396,7 +404,7 @@ export async function masterInPlace(
     if (Math.abs(step) < 0.1) break;
     gainDb = Math.min(24, gainDb + step);
     res = dryRun(a, sampleRate, gainDb, ceilingDb);
-    const ok = res.limitDb <= MAX_LIMIT_DB + 0.1 && res.lufs + monoOffset <= TARGET_LUFS + 0.3;
+    const ok = res.limitDb <= MAX_LIMIT_DB + 0.1 && res.lufs + monoOffset <= targetLufs + 0.3;
     if (ok && (!best || res.lufs > best.res.lufs)) best = { gainDb, res };
   }
   if (best) { gainDb = best.gainDb; res = best.res; }

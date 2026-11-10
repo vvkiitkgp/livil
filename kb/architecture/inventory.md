@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-608 TypeScript file(s) under `src/`, 120,887 lines.
+608 TypeScript file(s) under `src/`, 120,902 lines.
 
 ## Size hotspots
 
@@ -34,7 +34,7 @@ reading alone (Constitution P28).
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1324 |
+| `src/screens/studio/studioEngine.ts` | 1331 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,098 lines.
+77 file(s), 36,105 lines.
 
 | File | Lines |
 |---|---:|
@@ -120,7 +120,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
 | `src/screens/main/ProfileScreen.tsx` | 1472 |
 | `src/screens/main/HomeScreen.tsx` | 1465 |
-| `src/screens/studio/studioEngine.ts` | 1324 |
+| `src/screens/studio/studioEngine.ts` | 1331 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
@@ -598,13 +598,13 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-131 file(s), 13,958 lines.
+131 file(s), 13,966 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/synth.ts` | 910 |
+| `src/utils/audioFx/master.ts` | 455 |
 | `src/utils/tempo/index.ts` | 453 |
-| `src/utils/audioFx/master.ts` | 447 |
 | `src/utils/__tests__/synth.test.ts` | 405 |
 | `src/utils/__tests__/chatTyping.test.tsx` | 268 |
 | `src/utils/audioFile/flac.ts` | 234 |

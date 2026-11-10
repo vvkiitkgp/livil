@@ -117,6 +117,16 @@ Escalated to the owner in the board's standard format. It needs:
 - **"Song volume" stays a slider, for listening in the Editor only, capped at 200 %.** The posted render ignores it and
   is always mastered to the target.
 
+**Owner decision, 2026-11-10 — target raised to −11 LUFS; live trim 0.5 → 1.5 so editing, "Your song" and the post sound the same.** On the 2.2.0 closed-testing build the
+Editor was clearly quieter than the feed on both platforms. Measured on a synthetic voice + first-drum-preset mix at Editor
+levels (`autoLevel` voice, drums at 0.9, `RENDER_GAIN` 1/8): live playback at Song volume 100 % was −20.7 LUFS, the
+posted file −14.0, while uploads (never normalised) sit near −10. At −11 the limiter uses 3.3 dB of its 4 dB cap; −10
+hits the cap and lands at −10.6, so −11 is the practical maximum without squashing. `LIVE_TRIM` 1.5 puts the live
+mix at −11.2 LUFS (the posted file: −11.1); the safety curve's knee then catches the drum hits (0.45 % of samples)
+in place of the render's limiter. The library has no compressor/limiter node, so a trim through the curve is the
+only live option; 200 % on the Song volume slider is listening-only and presses the mix into the curve. `masterInPlace` took an
+optional `targetLufs` parameter so the measurement can be repeated in a test. Feed-wide normalisation still open.
+
 **Implemented on `feat/editor-prototype` (uncommitted, not device-measured):** render at −18 dB with no shaper + 30 Hz
 high-pass; BS.1770-4 meter; stereo-linked look-ahead true-peak limiter (3 ms / 10 ms hold / 100 ms release; inter-sample
 peaks interpolated only at local maxima within 3 dB of the ceiling); loudness search on a 32-frame block summary, one

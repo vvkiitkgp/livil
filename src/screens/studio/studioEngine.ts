@@ -166,8 +166,16 @@ function glide(param: AudioParam, v: number, now: number): void {
   param.setTargetAtTime(v, now, 0.015);
 }
 
-/** The live mix sits this far under the safety curve at Song volume 100% (−6 dB). */
-const LIVE_TRIM = 0.5;
+/**
+ * Live gain at Song volume 100%, chosen so editing sounds as loud as the posted song: the
+ * render masters to TARGET_LUFS with a real limiter, and this trim stands in for that gain
+ * (measured on a voice + drums mix: live −11.2 LUFS vs posted −11.1). It was 0.5 (−6 dB) until
+ * 2026-11-10, when the Editor played ~7 dB under its own posted result and ~10 dB under the
+ * feed. Above 1.0 the drum hits reach the safety curve's knee (0.45 % of samples at 1.5), which
+ * softens them the way the limiter does on the post; 200 % on the slider presses everything
+ * into the curve and is for listening only.
+ */
+const LIVE_TRIM = 1.5;
 /** Samples the level meter reads each time (~43 ms at 48 kHz). */
 const METER_FRAMES = 2048;
 
@@ -303,8 +311,7 @@ export class StudioEngine {
     // the output to whatever the hardware runs at.
     this.ctx = new AudioContext({ sampleRate: STUDIO_SAMPLE_RATE });
     // Master bus → safety curve (fed at 1/HEADROOM, its curve scales back up). LIVE_TRIM keeps
-    // a normal mix 6 dB under the curve at Song volume 100%, so the slider is audible all the
-    // way to 200% instead of just pressing a loud mix harder into the ceiling (2026-11-02).
+    // a normal mix just under the curve's knee at Song volume 100% (see its comment).
     // 'explicit' = its own buffer (see ensureReverb on in-place processing).
     this.master = new GainNode(this.ctx, { channelCountMode: 'explicit', gain: LIVE_TRIM / HEADROOM });
     const limiter = new WaveShaperNode(this.ctx, { curve: softLimitCurve() });

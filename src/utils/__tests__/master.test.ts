@@ -37,7 +37,7 @@ describe('loudness meter (BS.1770-4)', () => {
 });
 
 describe('mastering', () => {
-  it('brings a song to −14 LUFS with no true peak over −1 dBTP', async () => {
+  it('brings a song to the target loudness with no true peak over −1 dBTP', async () => {
     const x = song(12, 0.15, 0.3);
     const report = await masterInPlace([x, new Float32Array(x)], SR);
     expect(report.lufs).toBeGreaterThan(TARGET_LUFS - 0.7);

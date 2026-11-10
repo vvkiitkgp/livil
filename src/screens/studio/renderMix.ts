@@ -9,7 +9,7 @@
  * Mastering (src/utils/audioFx/master.ts): the graph renders 18 dB quiet with NO shaper — the
  * library scales down any 128-frame block that goes over full scale (a buzz), and the old
  * shaper "limiter" distorted every loud peak. Then, in JS: a rumble filter, loudness to
- * −14 LUFS with a true-peak limiter at −1 dBTP, and clean fades. The Editor's "Song volume"
+ * TARGET_LUFS (−11) with a true-peak limiter at −1 dBTP, and clean fades. The Editor's "Song volume"
  * does not apply here: it is for listening while you work.
  */
 import { BiquadFilterNode, GainNode, OfflineAudioContext } from 'react-native-audio-api';
