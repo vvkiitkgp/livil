@@ -470,7 +470,7 @@ export default function FloatingPlayer() {
   };
 
   // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
-  const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
+  const isExpanded = isFullScreenOpen || !!activeJam;  // wiggle gate
   // Jam active but fullscreen NOT open → narrow pill (no shuffle/repeat)
   const isJamOnly  = !!activeJam && !isFullScreenOpen;
 
@@ -483,6 +483,12 @@ export default function FloatingPlayer() {
   const morphAnim  = useRef(new Animated.Value(0)).current;
   const narrowAnim = useRef(new Animated.Value(0)).current;
 
+  // The wave keeps waving while the line turns into the pill and fades out (owner,
+  // 2026-11-10: it used to flatten the moment full screen opened). It is parked only once
+  // the pill has settled: by then it is invisible, and an invisible wave must not keep
+  // its frame loop running (see WaveVisualizer).
+  const [pillSettled, setPillSettled] = useState(false);
+
   useEffect(() => {
     if (morphExpanded) {
       // Springs up with a clear, graceful bounce, OPEN_MORPH_DELAY after full screen
@@ -493,8 +499,10 @@ export default function FloatingPlayer() {
         speed: 10,
         bounciness: 12,
         useNativeDriver: false,
-      }).start();
+      }).start(({ finished }) => { if (finished) { setPillSettled(true); } });
     } else {
+      // The wave ripples again from the first frame of the collapse.
+      setPillSettled(false);
       // Close: quick, clean ease (no delay, no bounce) so it collapses with the FS.
       Animated.timing(morphAnim, {
         toValue: 0,
@@ -919,11 +927,11 @@ export default function FloatingPlayer() {
             only lives on the minimized line. Centered + absolute so it never shifts
             the circle; the album circle sits on top, the wave flows out both sides. */}
         <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
-          {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
-              before the pill expands, and only re-ripples once it collapses back —
-              during a jam the pill is always expanded, so the wave simply stays off. */}
+          {/* Opening full screen, the wave keeps waving as it fades into the pill and is
+              parked once the pill has settled (pillSettled). It ripples again the moment
+              the pill starts collapsing. In a jam the pill is always open, so it stays off. */}
           <Reanimated.View style={lineStyle}>
-            <WaveVisualizer playing={isPlaying} suppressed={isExpanded || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
+            <WaveVisualizer playing={isPlaying} suppressed={!!activeJam || pillSettled || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
           </Reanimated.View>
         </Animated.View>
 
