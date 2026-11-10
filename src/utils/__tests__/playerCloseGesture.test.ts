@@ -37,9 +37,9 @@ describe('shouldRevealCloseTarget', () => {
 });
 
 describe('closeHintRemainingMs', () => {
-  it('keeps the hint up for what is left of 1.5 seconds after a quick pull', () => {
-    expect(closeHintRemainingMs(1000, 1000)).toBe(1500);
-    expect(closeHintRemainingMs(1000, 1400)).toBe(1100);
+  it('keeps the hint up for what is left of 0.7 seconds after a quick pull', () => {
+    expect(closeHintRemainingMs(1000, 1000)).toBe(700);
+    expect(closeHintRemainingMs(1000, 1400)).toBe(300);
   });
 
   it('adds no wait once the hint has been up long enough', () => {
@@ -61,7 +61,7 @@ describe('isOverCloseTarget', () => {
     expect(isOverCloseTarget(50, travel, travel, false)).toBe(false);
   });
 
-  // A finger never holds still for 3 seconds. Wobbling around the entry distance must not
+  // A finger never holds still for 2 seconds. Wobbling around the entry distance must not
   // keep dropping off the X, because each drop restarts the countdown.
   it('keeps holding through a wobble past the entry distance', () => {
     expect(isOverCloseTarget(0, travel - 50, travel, true)).toBe(true);
