@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-610 TypeScript file(s) under `src/`, 121,330 lines.
+611 TypeScript file(s) under `src/`, 121,580 lines.
 
 ## Size hotspots
 
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-79 file(s), 36,532 lines.
+80 file(s), 36,782 lines.
 
 | File | Lines |
 |---|---:|
@@ -152,6 +152,7 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/SignUpScreen.tsx` | 290 |
 | `src/screens/main/SettingsScreen.tsx` | 290 |
 | `src/screens/auth/AddPhotoScreen.tsx` | 273 |
+| `src/screens/studio/renderMix.ts` | 273 |
 | `src/screens/main/ContactTeamScreen.tsx` | 272 |
 | `src/screens/main/PlaylistScreen.tsx` | 269 |
 | `src/screens/main/__tests__/NotificationSettingsScreen.test.tsx` | 269 |
@@ -173,10 +174,10 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/liveLoudness.ts` | 197 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
-| `src/screens/studio/renderMix.ts` | 180 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
 | `src/screens/main/AddToLivilScreen.tsx` | 161 |
+| `src/screens/studio/__tests__/renderMix.test.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
 | `src/screens/studio/SongTrim.tsx` | 116 |
