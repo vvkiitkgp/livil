@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,602 lines.
+611 TypeScript file(s) under `src/`, 121,615 lines.
 
 ## Size hotspots
 
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-80 file(s), 36,798 lines.
+80 file(s), 36,811 lines.
 
 | File | Lines |
 |---|---:|
@@ -136,9 +136,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/ChatMediaViewerScreen.tsx` | 597 |
 | `src/screens/studio/SynthSheet.tsx` | 483 |
 | `src/screens/main/NewConversationScreen.tsx` | 479 |
+| `src/screens/studio/EditorPanel.tsx` | 417 |
 | `src/screens/main/ActivityCenterScreen.tsx` | 413 |
 | `src/screens/main/CreatePlaylistScreen.tsx` | 404 |
-| `src/screens/studio/EditorPanel.tsx` | 404 |
 | `src/screens/main/EditAlbumScreen.tsx` | 403 |
 | `src/screens/studio/TunePanel.tsx` | 399 |
 | `src/screens/auth/SignInScreen.tsx` | 379 |
