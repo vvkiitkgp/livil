@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-612 TypeScript file(s) under `src/`, 121,787 lines.
+612 TypeScript file(s) under `src/`, 121,793 lines.
 
 ## Size hotspots
 
@@ -197,7 +197,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,126 lines.
+191 file(s), 37,132 lines.
 
 | File | Lines |
 |---|---:|
@@ -228,8 +228,8 @@ case the call fails silently wherever its result is discarded.
 | `src/components/MessageMenu.tsx` | 305 |
 | `src/components/__tests__/PostGridCard.test.tsx` | 305 |
 | `src/components/JamSuggestsTab.tsx` | 303 |
+| `src/components/Button.tsx` | 292 |
 | `src/components/ChatSongCard.tsx` | 290 |
-| `src/components/Button.tsx` | 286 |
 | `src/components/InboxBanner.tsx` | 283 |
 | `src/components/TagInput.tsx` | 278 |
 | `src/components/OnboardingNotice.tsx` | 276 |
