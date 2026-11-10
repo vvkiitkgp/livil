@@ -451,7 +451,9 @@ export default function StudioScreen() {
     setMixProgress(0);
     const current = () => mixingRef.current?.of === project;
     const done = (async () => {
-      if (previous) { await previous.done; }
+      // Wait for the render in flight, but never forever: if it has hung, a new Next must still
+      // be able to start (the cost is two renders in memory for that one bad case).
+      if (previous) { await Promise.race([previous.done, new Promise<void>(r => setTimeout(r, 15000))]); }
       // Let React paint "Your song" with its spinner before the mix starts: the render's set-up
       // is synchronous, and started in the same tick it left the Editor on screen, frozen and
       // apparently still tappable, with no sign that Next had done anything.
