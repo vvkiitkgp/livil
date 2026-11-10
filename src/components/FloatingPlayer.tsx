@@ -85,6 +85,12 @@ const CLOSE_FS_DIST = 40;
 const CLOSE_FS_VEL  = 400;
 // The circle shrinks while it sits on the X, so the X's countdown ring shows around it.
 const CIRCLE_ON_X_SCALE = 0.72;
+/**
+ * How long an Android sheet takes to slide away: react-native-screens' slide_from_bottom exit
+ * (rns_slide_out_to_bottom) runs for config_mediumAnimTime, 400 ms. A little longer, so the
+ * player slides in after the sheet has gone.
+ */
+const SHEET_CLOSE_MS = 420;
 // The circle's springs (stiffness/damping, mass 1). Converted from the React Native
 // Animated bounciness/speed pairs they replaced, so the motion is unchanged.
 const SPRING_BACK    = { stiffness: 385, damping: 23.4, mass: 1 };  // drag release → rest (was 10/14)
@@ -257,7 +263,21 @@ export default function FloatingPlayer() {
   // player on iPhone, where it is a native layer above the whole app. Android draws it in the
   // same window, under the player, so the player hides itself while one is the top screen.
   const topRoute = useCurrentRouteName();
-  const underSheet = Platform.OS === 'android' && isSheetRoute(topRoute);
+  const sheetOnTop = Platform.OS === 'android' && isSheetRoute(topRoute);
+  // The route changes when a sheet STARTS closing, while it is still sliding down for
+  // SHEET_CLOSE_MS: coming back at once put the player on top of the closing sheet (owner,
+  // 2026-11-10, X on New Post). Hide at once when one opens; come back once it has gone.
+  const [sheetLeaving, setSheetLeaving] = useState(false);
+  const wasSheetOnTop = useRef(sheetOnTop);
+  useEffect(() => {
+    const was = wasSheetOnTop.current;
+    wasSheetOnTop.current = sheetOnTop;
+    if (sheetOnTop || !was) { setSheetLeaving(false); return; }
+    setSheetLeaving(true);
+    const t = setTimeout(() => setSheetLeaving(false), SHEET_CLOSE_MS);
+    return () => clearTimeout(t);
+  }, [sheetOnTop]);
+  const underSheet = sheetOnTop || sheetLeaving;
   const covered = isStoryViewerOpen || isRepostOpen || underSheet;
   const shouldShow = (!!nowPlaying || !!activeJam) && !covered;
   useEffect(() => {
