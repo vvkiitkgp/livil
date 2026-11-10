@@ -15,7 +15,7 @@
 import { BiquadFilterNode, GainNode, OfflineAudioContext } from 'react-native-audio-api';
 import { compensateLatency, reverbImpulse, reverbSeconds } from '../../utils/audioFx/effects';
 import { edgeRamp, resample } from '../../utils/audioFx/level';
-import { finishEnds, masterInPlace, type MasterReport } from '../../utils/audioFx/master';
+import { finishEnds, masterInPlace, yieldUi, type MasterReport } from '../../utils/audioFx/master';
 import { DRUM_IDS, STEPS, synthDrum } from '../../utils/drums';
 import { renderSynth, SYNTH_STEPS, synthHits } from '../../utils/synth';
 import { clipLength, songRange, type Project } from './studioEngine';
@@ -48,7 +48,14 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
     return b;
   };
 
+  // Building the graph copies every take into the offline context and schedules a source per
+  // drum and synth hit — hundreds of them on a long song — all synchronous. Yield between the
+  // pieces so the "Mixing your song…" screen can paint and stay responsive (the Editor used
+  // to sit frozen, still looking tappable, until the render was done).
+  await yieldUi();
+  onProgress?.(0.02);
   for (const v of project.voices) {
+    await yieldUi();
     const chosen = v.tuneOn && v.take.tuned ? v.take.tuned : v.take.raw;
     // Every take should already be at this rate (drafts are converted on open); never play one
     // at the wrong speed.
@@ -140,6 +147,8 @@ export async function renderMix(project: Project, onProgress?: (fraction: number
     }
   }
 
+  await yieldUi();
+  onProgress?.(0.1);
   const out = await ctx.startRendering();
   onProgress?.(0.3);
   const channels = [new Float32Array(out.getChannelData(0)), new Float32Array(out.getChannelData(out.numberOfChannels > 1 ? 1 : 0))];

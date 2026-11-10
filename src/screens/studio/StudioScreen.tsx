@@ -440,6 +440,10 @@ export default function StudioScreen() {
     if (mix?.of === project) return;
     setMix(null);
     setMixProgress(0);
+    // Let React paint "Your song" with its spinner before the mix starts: the render's set-up is
+    // synchronous, and started in the same tick it left the Editor on screen, frozen and
+    // apparently still tappable, with no sign that Next had done anything.
+    await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
     try {
       const t0 = Date.now();
       const m = await renderMix(project, setMixProgress);

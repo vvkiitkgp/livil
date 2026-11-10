@@ -451,4 +451,5 @@ function sameSamples(a: Float32Array, b: Float32Array): boolean {
   return true;
 }
 
-const yieldUi = () => new Promise<void>(r => setTimeout(r, 0));
+/** Lets React paint and touches land between slices of long audio work. */
+export const yieldUi = () => new Promise<void>(r => setTimeout(r, 0));
