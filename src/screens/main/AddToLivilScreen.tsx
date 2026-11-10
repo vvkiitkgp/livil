@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -9,8 +9,6 @@ import { Icon, type IconName } from '../../components/Icon';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
 import { Logo } from '../../components/Logo';
 import { useMyDrafts } from '../../hooks/useMyDrafts';
-import { usePlayback } from '../../contexts/PlaybackContext';
-import { useJam } from '../../contexts/JamContext';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -29,20 +27,6 @@ export default function AddToLivilScreen() {
   const navigation = useNavigation<Nav>();
   const { drafts } = useMyDrafts();
 
-  // Opening New Post CLOSES the player — the same close as holding the circle on the X: music
-  // stopped, queue emptied, player and lock-screen card gone (owner, 2026-11-10). Every way on
-  // from here (Upload, the Editor, a repost) stops the music anyway, and on Android the player
-  // could only be hidden under this screen. Once, on open. Not in a Jam: the hold-to-close asks
-  // before ending one for everyone, so opening New Post must not end it silently.
-  const { closePlayer } = usePlayback();
-  const { activeJam } = useJam();
-  const inJam = !!activeJam;
-  useEffect(() => {
-    if (inJam) return;
-    console.log('[LIVIL][POST] New Post opened → closePlayer');
-    closePlayer();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>

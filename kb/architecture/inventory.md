@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,754 lines.
+612 TypeScript file(s) under `src/`, 121,787 lines.
 
 ## Size hotspots
 
@@ -32,8 +32,8 @@ reading alone (Constitution P28).
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/components/PostCard.tsx` | 1506 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
-| `src/screens/main/ProfileScreen.tsx` | 1472 |
-| `src/screens/main/HomeScreen.tsx` | 1465 |
+| `src/screens/main/ProfileScreen.tsx` | 1475 |
+| `src/screens/main/HomeScreen.tsx` | 1468 |
 | `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
@@ -51,7 +51,7 @@ reading alone (Constitution P28).
 | `src/screens/studio/RecordPanel.tsx` | 610 |
 | `src/screens/main/CollaboratorPickerScreen.tsx` | 609 |
 
-> 24 file(s) over the threshold against **39 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
+> 24 file(s) over the threshold against **40 custom hook(s)** in `src/hooks/`. The ratio of large units to extracted
 > logic is the structural signal here, more than any individual file.
 
 ## RPCs called by the client but not defined in any migration
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-80 file(s), 36,862 lines.
+80 file(s), 36,852 lines.
 
 | File | Lines |
 |---|---:|
@@ -118,8 +118,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/UploadScreen.tsx` | 2596 |
 | `src/screens/main/StoryViewerScreen.tsx` | 1671 |
 | `src/screens/main/UserProfileScreen.tsx` | 1479 |
-| `src/screens/main/ProfileScreen.tsx` | 1472 |
-| `src/screens/main/HomeScreen.tsx` | 1465 |
+| `src/screens/main/ProfileScreen.tsx` | 1475 |
+| `src/screens/main/HomeScreen.tsx` | 1468 |
 | `src/screens/studio/studioEngine.ts` | 1375 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
@@ -174,9 +174,9 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/studio/liveLoudness.ts` | 197 |
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
-| `src/screens/main/AddToLivilScreen.tsx` | 178 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
+| `src/screens/main/AddToLivilScreen.tsx` | 162 |
 | `src/screens/studio/__tests__/renderMix.test.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
@@ -555,7 +555,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Hooks
 
-39 file(s), 2,545 lines.
+40 file(s), 2,588 lines.
 
 | File | Lines |
 |---|---:|
@@ -590,6 +590,7 @@ case the call fails silently wherever its result is discarded.
 | `src/hooks/__tests__/useCommentsCountDeltas.test.tsx` | 48 |
 | `src/hooks/__tests__/useNowPlayingCommentsSync.test.tsx` | 45 |
 | `src/hooks/__tests__/useProfileLayout.test.tsx` | 45 |
+| `src/hooks/useOpenPostFlow.ts` | 43 |
 | `src/hooks/useImageAspect.ts` | 37 |
 | `src/hooks/useProfileLayout.ts` | 35 |
 | `src/hooks/useMyDrafts.ts` | 34 |

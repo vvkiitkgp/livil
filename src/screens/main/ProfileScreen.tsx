@@ -52,6 +52,7 @@ import {
   type ProfileStats,
 } from '../../services/posts';
 import { useSpotifyAvailability } from '../../services/spotify';
+import { useOpenPostFlow } from '../../hooks/useOpenPostFlow';
 import { getRepostsPublic } from '../../services/profileService';
 import { getFollowCounts, type FollowCounts } from '../../services/follows';
 import { fetchBadgesForUser, type ProfileBadge } from '../../services/profileBadges';
@@ -154,6 +155,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const spotify = useSpotifyAvailability();
+  const postFlow = useOpenPostFlow();
   const { showToast } = useToast();
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const handlePostDeleted = useCallback((postId: string) => {
@@ -874,7 +876,8 @@ export default function ProfileScreen() {
             style={styles.addTrackButton}
             // With Spotify reposts switched on — or not known yet — "+ Post" asks what to
             // add (ADR-0027); only a real "off" from the server goes straight to Upload.
-            onPress={() => navigation.navigate(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
+            busy={postFlow.busy}
+            onPress={() => postFlow.open(spotify.reposts !== false ? 'AddToLivil' : 'Upload')}
             accessibilityLabel={spotify.reposts !== false ? 'Create a post' : 'Upload a track'}
           />
           <TouchableOpacity
