@@ -48,11 +48,11 @@ beforeEach(() => {
 afterEach(() => { jest.useRealTimers(); });
 
 describe('PlayerCloseTarget', () => {
-  it('closes only after the full 3 seconds on the X', () => {
+  it('closes only after the full 2 seconds on the X', () => {
     const onHoldComplete = jest.fn();
     render(true, onHoldComplete);
-    expect(CLOSE_HOLD_MS).toBe(3000);
-    advance(2999);
+    expect(CLOSE_HOLD_MS).toBe(2000);
+    advance(1999);
     expect(onHoldComplete).not.toHaveBeenCalled();
     advance(1);
     expect(onHoldComplete).toHaveBeenCalledTimes(1);
@@ -68,19 +68,19 @@ describe('PlayerCloseTarget', () => {
   it('cancels when the circle leaves the X, however late', () => {
     const onHoldComplete = jest.fn();
     const tree = render(true, onHoldComplete);
-    advance(2900);
+    advance(1900);
     update(tree, false, onHoldComplete);
     advance(10_000);
     expect(onHoldComplete).not.toHaveBeenCalled();
   });
 
-  it('needs a full 3 seconds again after leaving and coming back', () => {
+  it('needs a full 2 seconds again after leaving and coming back', () => {
     const onHoldComplete = jest.fn();
     const tree = render(true, onHoldComplete);
-    advance(2900);
+    advance(1900);
     update(tree, false, onHoldComplete);
     update(tree, true, onHoldComplete);
-    advance(2999);
+    advance(1999);
     expect(onHoldComplete).not.toHaveBeenCalled();
     advance(1);
     expect(onHoldComplete).toHaveBeenCalledTimes(1);
@@ -91,14 +91,12 @@ describe('PlayerCloseTarget', () => {
     const tree = render(false, onHoldComplete);
     expect(label(tree)).toBe('Drag on X to close');
     update(tree, true, onHoldComplete);
-    expect(label(tree)).toBe('Keep holding 3');
+    expect(label(tree)).toBe('Keep holding for 2 seconds to close');
     advance(1000);
-    expect(label(tree)).toBe('Keep holding 2');
-    advance(1000);
-    expect(label(tree)).toBe('Keep holding 1');
+    expect(label(tree)).toBe('Keep holding for 1 second to close');
     update(tree, false, onHoldComplete);
     update(tree, true, onHoldComplete);
-    expect(label(tree)).toBe('Keep holding 3');
+    expect(label(tree)).toBe('Keep holding for 2 seconds to close');
   });
 
   it('calls the callback from the latest render', () => {
@@ -106,7 +104,7 @@ describe('PlayerCloseTarget', () => {
     const latest = jest.fn();
     const tree = render(true, stale);
     update(tree, true, latest);
-    advance(3000);
+    advance(2000);
     expect(stale).not.toHaveBeenCalled();
     expect(latest).toHaveBeenCalledTimes(1);
   });
@@ -114,7 +112,7 @@ describe('PlayerCloseTarget', () => {
   it('buzzes on landing and once per remaining second', () => {
     render(true, jest.fn());
     expect(haptics.impact).toHaveBeenCalledTimes(1);
-    advance(3000);
-    expect(haptics.select).toHaveBeenCalledTimes(2);
+    advance(2000);
+    expect(haptics.select).toHaveBeenCalledTimes(1);
   });
 });

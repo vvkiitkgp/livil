@@ -85,7 +85,9 @@ export default function PlayerCloseTarget({ visible, holding, bottom, onHoldComp
   return (
     <Animated.View style={[StyleSheet.absoluteFill, styles.scrim, { opacity: shown }]} pointerEvents="none">
       <Text style={styles.label}>
-        {holding ? `Keep holding ${secondsLeft}` : 'Drag on X to close'}
+        {holding
+          ? `Keep holding for ${secondsLeft} ${secondsLeft === 1 ? 'second' : 'seconds'} to close`
+          : 'Drag on X to close'}
       </Text>
       <View style={[styles.anchor, { bottom }]}>
         <Animated.View style={[styles.target, holding && styles.targetHolding, { transform: [{ scale }] }]}>
@@ -111,7 +113,8 @@ export default function PlayerCloseTarget({ visible, holding, bottom, onHoldComp
 const styles = StyleSheet.create({
   scrim: { backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center' },
   anchor: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
-  label: { color: COLORS.white, fontSize: 20, fontWeight: '700' },
+  // "Keep holding for 2 seconds to close" can wrap on a narrow phone: centre it, off the edges.
+  label: { color: COLORS.white, fontSize: 20, fontWeight: '700', textAlign: 'center', paddingHorizontal: 32 },
   target: {
     width: CLOSE_TARGET_SIZE,
     height: CLOSE_TARGET_SIZE,

@@ -17,6 +17,7 @@ import Reanimated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -38,7 +39,6 @@ import PlayerCloseTarget from './PlayerCloseTarget';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { endJamRoom, leaveJamRoom } from '../services/jamRooms';
-import { useTrackWaveform } from '../hooks/useTrackWaveform';
 import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import {
@@ -51,7 +51,6 @@ import {
 } from '../utils/playerCloseGesture';
 import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
-import WaveVisualizer from './WaveVisualizer';
 import CoverFallback from './CoverFallback';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -93,9 +92,12 @@ const SPRING_PRESS   = { stiffness: 682, damping: 23.4, mass: 1 };  // finger do
 const SPRING_RELEASE = { stiffness: 470, damping: 28.8, mass: 1 };  // finger up → 1× (was 8/18)
 const SPRING_SNAP    = { stiffness: 937, damping: 57.1, mass: 1 };  // onto / off the X, no bounce (was 0/40)
 const SPRING_POP     = { stiffness: 470, damping: 22.8, mass: 1 };  // play/pause glyph pop (was 12/18)
-// Delay (ms) before the pill morphs open, so the FS player opens first and the
-// pill then pops up. Close stays instant (matches the FS collapse).
-const OPEN_MORPH_DELAY = 220;
+// Delay (ms) before the pill morphs open, so the FS player leads and the pill pops
+// up just behind it (FS is ~64% open by then). Was 220 ms; owner asked for 0.1 s
+// (2026-11-10). Close stays instant (matches the FS collapse).
+const OPEN_MORPH_DELAY = 100;
+// One full turn of the spinning cover while a song plays (ms).
+const SPIN_MS = 8000;
 
 // ─── "It's draggable" wiggle (onboarding discovery) ─────────────────────────────
 // A gentle shimmy of the floating circle that teaches the user the centre is
@@ -192,7 +194,6 @@ export default function FloatingPlayer() {
     playNext, playPrev,
     openFullScreenPlayer, closeFullScreenPlayer, isFullScreenOpen,
     isImmersive,
-    videoFrameBuffering,
     jamLocked,
     shuffleEnabled, toggleShuffle,
     repeatMode, cycleRepeatMode,
@@ -205,17 +206,6 @@ export default function FloatingPlayer() {
   const { isHost } = useJamRealtime();
   // The host's jam pill counts new suggestions while they browse elsewhere.
   const { unreadCount: suggestsUnread } = useJamSuggestions();
-
-  // ─── Beat-synced visualizer envelope ───────────────────────────────────────────
-  // Resolve the ACTIVE track's loudness envelope (cache → DB → analyze-on-device)
-  // and hand it to WaveVisualizer. Fetched by trackId only (not threaded through
-  // every NowPlayingInfo / feed query), since only the playing track needs it.
-  //
-  // The visualiser's envelope. The AUDIO-ONLY gate that keeps this off video — the one
-  // that prevents an OOM kill — now lives in the hook, in one place.
-  const waveform = useTrackWaveform(
-    nowPlaying?.trackId, nowPlaying?.mediaKind, nowPlaying?.audioUrl,
-  );
 
   // ─── Keyboard hide ────────────────────────────────────────────────────────────
   const keyboardAnim = useRef(new Animated.Value(0)).current;
@@ -369,6 +359,29 @@ export default function FloatingPlayer() {
     transform: [{ translateX: circleX.value }, { translateY: circleY.value }, { scale: scaleAnim.value }],
   }));
 
+  // The white line (wave) shrinks to its centre and fades with the circle when a hold on the X
+  // closes the player. Otherwise it stayed for the 200 ms slide-out after the circle had gone.
+  const lineVanish = useSharedValue(1);
+  const lineStyle = useAnimatedStyle(() => ({
+    opacity: lineVanish.value,
+    transform: [{ scaleX: lineVanish.value }],
+  }));
+
+  // ─── Cover spin ───────────────────────────────────────────────────────────────
+  // The cover turns like a record while the song plays and stops where it is on pause,
+  // picking up from that angle when playback resumes. Runs only while it can be seen:
+  // not paused, not in full screen (the centre shows no cover there), not under a
+  // sheet / story / repost — a still or hidden player must not run a frame loop.
+  const spinning = isPlaying && shouldShow && !isFullScreenOpen;
+  const spin = useSharedValue(0);
+  const spinStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${spin.value}deg` }] }));
+  useEffect(() => {
+    if (!spinning) { cancelAnimation(spin); return; }
+    const from = spin.value % 360;
+    spin.value = from;
+    spin.value = withRepeat(withTiming(from + 360, { duration: SPIN_MS, easing: REasing.linear }), -1);
+  }, [spinning, spin]);
+
   const springBack = () => {
     circleX.value = withSpring(0, SPRING_BACK);
     circleY.value = withSpring(0, SPRING_BACK);
@@ -389,11 +402,12 @@ export default function FloatingPlayer() {
   // A close leaves the circle shrunk away on the X. Put it back before the player next shows.
   useEffect(() => {
     if (!shouldShow) { return; }
-    cancelAnimation(circleX); cancelAnimation(circleY); cancelAnimation(scaleAnim);
+    cancelAnimation(circleX); cancelAnimation(circleY); cancelAnimation(scaleAnim); cancelAnimation(lineVanish);
     circleX.value = 0;
     circleY.value = 0;
     scaleAnim.value = 1;
-  }, [shouldShow, circleX, circleY, scaleAnim]);
+    lineVanish.value = 1;
+  }, [shouldShow, circleX, circleY, scaleAnim, lineVanish]);
 
   const cancelCloseHide = () => {
     if (closeHideTimerRef.current) {
@@ -435,6 +449,7 @@ export default function FloatingPlayer() {
       return;
     }
     console.log('[LIVIL][FP] held on X → closePlayer');
+    lineVanish.value = withTiming(0, { duration: 160 });
     scaleAnim.value = withTiming(0, { duration: 160 }, finished => {
       'worklet';
       if (finished) { runOnJS(closePlayer)(); }
@@ -461,58 +476,26 @@ export default function FloatingPlayer() {
   };
 
   // ─── Bar / pill morph (non-native — animates layout props) ───────────────────
-  const isExpanded = isFullScreenOpen || !!activeJam;  // wave-suppress + wiggle gate
+  const isExpanded = isFullScreenOpen || !!activeJam;  // wiggle gate
   // Jam active but fullscreen NOT open → narrow pill (no shuffle/repeat)
   const isJamOnly  = !!activeJam && !isFullScreenOpen;
-  const isVideo    = nowPlaying?.mediaKind === 'video';
 
-  // For a VIDEO opening full-screen, keep the handle as a straight line until the
-  // FS video frame is actually showing (mounted/ready), THEN expand the pill — so
-  // it doesn't expand over a still-loading (cover-only) video. Audio and jam
-  // expand right away. We only READ the FS frame's buffering flag; the engine is
-  // untouched.
-  const [videoFrameReady, setVideoFrameReady] = useState(false);
-  const sawFrameBufferingRef = useRef(false);
-
-  // Reset readiness whenever FS (re)opens for a video or the video track changes.
-  useEffect(() => {
-    if (isFullScreenOpen && isVideo) {
-      setVideoFrameReady(false);
-      sawFrameBufferingRef.current = false;
-    }
-  }, [isFullScreenOpen, isVideo, nowPlaying?.postId]);
-
-  // The FS frame raises videoFrameBuffering on mount and clears it once the first
-  // picture is decodable → "buffered then cleared" means ready/showing.
-  useEffect(() => {
-    if (!isFullScreenOpen || !isVideo) { return; }
-    if (videoFrameBuffering) { sawFrameBufferingRef.current = true; }
-    else if (sawFrameBufferingRef.current) { setVideoFrameReady(true); }
-  }, [videoFrameBuffering, isFullScreenOpen, isVideo]);
-
-  // Safety net: never leave the handle stuck as a line if the frame never reports
-  // ready (instant cached load, a stall, or a decode error).
-  useEffect(() => {
-    if (!isFullScreenOpen || !isVideo || videoFrameReady) { return; }
-    const id = setTimeout(() => setVideoFrameReady(true), 4000);
-    return () => clearTimeout(id);
-  }, [isFullScreenOpen, isVideo, videoFrameReady]);
-
-  // Pill expands immediately for a jam or audio; for a video opening FS it waits
-  // for the frame to be ready (until then it stays the straight line).
-  const morphExpanded = !!activeJam || (isFullScreenOpen && (!isVideo || videoFrameReady));
+  // The pill opens with the full-screen player, for audio and video alike. It must
+  // NOT wait for a video's first frame: it used to, and on a slow network the handle
+  // sat as a bare line for up to 4 s after full screen had opened (owner, 2026-11-10).
+  // Full screen shows its own loading spinner until the video's first frame.
+  const morphExpanded = !!activeJam || isFullScreenOpen;
 
   const morphAnim  = useRef(new Animated.Value(0)).current;
   const narrowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (morphExpanded) {
-      // Springs up with a clear, graceful bounce. Audio FS-open keeps the fixed
-      // pre-expand delay (feels right); video has already waited for its frame, so
-      // it expands immediately on ready; jam too.
+      // Springs up with a clear, graceful bounce, OPEN_MORPH_DELAY after full screen
+      // starts opening so it pops up behind it. A jam's pill (FS closed) opens at once.
       Animated.spring(morphAnim, {
         toValue: 1,
-        delay: (isFullScreenOpen && !isVideo) ? OPEN_MORPH_DELAY : 0,
+        delay: isFullScreenOpen ? OPEN_MORPH_DELAY : 0,
         speed: 10,
         bounciness: 12,
         useNativeDriver: false,
@@ -526,7 +509,7 @@ export default function FloatingPlayer() {
         useNativeDriver: false,
       }).start();
     }
-  }, [morphExpanded, isFullScreenOpen, isVideo, morphAnim]);
+  }, [morphExpanded, isFullScreenOpen, morphAnim]);
 
   // Belt-and-suspenders: while the player is hidden behind a covering screen
   // (Repost / Story viewer) it renders null, so an in-flight collapse animation
@@ -627,17 +610,16 @@ export default function FloatingPlayer() {
   const barHeight  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_H,       PILL_H] });
   const barTop     = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_TOP_REST, BAR_TOP_PILL] });
   const barRadius  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [1, PILL_H / 2] });
-  // Rest color is TRANSPARENT (not white): the resting "line" is drawn by the
-  // WaveVisualizer instead, so it looks like the white line itself is waving
-  // (and flattens to that same line when paused). The bar still fades into the
-  // dark pill as it morphs open.
+  // Rest color is TRANSPARENT (not white): the resting white line is its own view
+  // (styles.restLine), so a completed close hold can shrink it with the circle. The bar
+  // still fades into the dark pill as it morphs open.
   const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(10,10,15,0)', 'rgba(10,10,15,0.9)'] });
   const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(139, 61, 255,0)', 'rgba(139, 61, 255,0.50)'] });
   // Content fades in only after pill is mostly open, and out before it collapses
   const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
-  // Spike visualizer lives ONLY on the resting white line — fade it out as soon
-  // as the bar starts morphing into the pill (inverse of morphAnim).
-  const visualizerOpacity = morphAnim.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
+  // The white line lives ONLY at rest — fade it out as soon as the bar starts
+  // morphing into the pill (inverse of morphAnim).
+  const restLineOpacity = morphAnim.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
 
   // Pulsing live dot
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -736,6 +718,10 @@ export default function FloatingPlayer() {
       closeHoldingRef.current = false;
       cancelAnimation(scaleAnim);
       scaleAnim.value = withSpring(1.22, SPRING_PRESS);
+      // A touch inside the 160 ms close cancels it (the scale callback gets finished=false),
+      // so the player stays: bring the line back with the circle.
+      cancelAnimation(lineVanish);
+      lineVanish.value = 1;
     })
     .onStart(() => {
       // Any real drag = the user discovered the circle is movable → stop the
@@ -931,17 +917,14 @@ export default function FloatingPlayer() {
           </Animated.View>
         </Animated.View>
 
-        {/* ── Wavy-line visualizer ──
-            The white line ripples as a scrolling sine wave while playing and
-            flattens back to a straight line on pause (Material wavy-progress look).
-            Fades out (inverse of morphAnim) as the line morphs into the pill, so it
-            only lives on the minimized line. Centered + absolute so it never shifts
-            the circle; the album circle sits on top, the wave flows out both sides. */}
-        <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
-          {/* suppressed = isExpanded (FS open OR jam): the wave flattens to a line
-              before the pill expands, and only re-ripples once it collapses back —
-              during a jam the pill is always expanded, so the wave simply stays off. */}
-          <WaveVisualizer playing={isPlaying} suppressed={isExpanded || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
+        {/* ── Resting white line ──
+            A still line (the beat-synced wave was removed 2026-11-10; the cover spins
+            instead). Fades out (inverse of morphAnim) as the line morphs into the pill.
+            Centered + absolute so it never shifts the circle, which sits on top. */}
+        <Animated.View style={[styles.restLineOverlay, { opacity: restLineOpacity }]} pointerEvents="none">
+          <Reanimated.View style={lineStyle}>
+            <View testID="floating-player-line" style={[styles.restLine, { width: REST_BAR_W }]} />
+          </Reanimated.View>
         </Animated.View>
 
         {/* ── Draggable circle ── */}
@@ -965,17 +948,19 @@ export default function FloatingPlayer() {
               {/* Minimised → cover (audio) or thumbnail (video). FS open → transparent
                   centre (the stroked ring lets the FS video show through). */}
               {!isFullScreenOpen && (
-                (nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
-                  <Image
-                    source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
-                    style={styles.albumArt}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.fallbackArt}>
-                    <CoverFallback />
-                  </View>
-                )
+                <Reanimated.View testID="floating-player-cover" style={[StyleSheet.absoluteFill, spinStyle]}>
+                  {(nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
+                    <Image
+                      source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+                      style={styles.albumArt}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.fallbackArt}>
+                      <CoverFallback />
+                    </View>
+                  )}
+                </Reanimated.View>
               )}
               {/* Persistent play/pause indicator (driven by global play state).
                   Button convention: shows the action a tap would take — ❚❚ while
@@ -1022,7 +1007,7 @@ const styles = StyleSheet.create({
   // Centered, absolute (so it never shifts the circle) overlay for the spike
   // visualizer on the resting line. The album circle renders after this and sits
   // on top, framing the spikes that flank it.
-  visualizerOverlay: {
+  restLineOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
@@ -1031,6 +1016,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Same thickness and round ends as the flat wave it replaced.
+  restLine: { height: 2.5, borderRadius: 1.25, backgroundColor: COLORS.white },
 
   pillContent: {
     flex: 1,

@@ -1,7 +1,7 @@
 /**
  * Once the track is gone the player must leave the screen. Its hidden offset only moves it
  * down onto the tab bar, so it has to stop rendering after the slide: closing the player left
- * the wave sitting on the tab bar until something else happened to re-render it.
+ * the white line sitting on the tab bar until something else happened to re-render it.
  */
 
 import React from 'react';
@@ -21,6 +21,7 @@ jest.mock('react-native-reanimated', () => {
     useSharedValue: (v: unknown) => ({ value: v }),
     useAnimatedStyle: (fn: () => unknown) => fn(),
     withSpring: identity,
+    withRepeat: identity,
     withTiming: identity,
     withSequence: (...steps: unknown[]) => steps[steps.length - 1],
     cancelAnimation: () => undefined,
@@ -43,7 +44,6 @@ jest.mock('../../../lib/supabase', () => ({ supabase: {} }));
 jest.mock('../../services/posts', () => ({}));
 jest.mock('../../services/jamRooms', () => ({}));
 jest.mock('../../navigation/navigationRef', () => ({ navigationRef: {}, useCurrentRouteName: () => 'App' }));
-jest.mock('../../hooks/useTrackWaveform', () => ({ useTrackWaveform: () => null }));
 jest.mock('../../utils/haptics', () => ({ haptics: {} }));
 jest.mock('../../contexts/JamContext', () => ({
   useJam: () => ({ activeJam: null, clearActiveJam: jest.fn() }),
@@ -52,7 +52,6 @@ jest.mock('../../contexts/JamRealtimeContext', () => ({ useJamRealtime: () => ({
 jest.mock('../../contexts/JamSuggestionsContext', () => ({
   useJamSuggestions: () => ({ unreadCount: 0 }),
 }));
-jest.mock('../WaveVisualizer', () => 'WaveVisualizer');
 jest.mock('../PlayerCloseTarget', () => 'PlayerCloseTarget');
 jest.mock('../JamExitModal', () => 'JamExitModal');
 jest.mock('../JamPillAvatar', () => 'JamPillAvatar');
@@ -67,7 +66,6 @@ const mockPlayback: Record<string, unknown> = {
   isRepostOpen: false,
   isFullScreenOpen: false,
   isImmersive: false,
-  videoFrameBuffering: false,
   jamLocked: false,
   shuffleEnabled: false,
   repeatMode: 'off',
@@ -97,7 +95,7 @@ function setTrack(tree: ReactTestRenderer, nowPlaying: typeof song | null) {
   act(() => { tree.update(<FloatingPlayer />); });
 }
 
-const waves = (tree: ReactTestRenderer) => tree.root.findAll(n => (n.type as unknown) === 'WaveVisualizer').length;
+const lines = (tree: ReactTestRenderer) => tree.root.findAll(n => n.props.testID === 'floating-player-line' && typeof n.type === 'string').length;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -114,16 +112,16 @@ afterEach(() => {
 });
 
 describe('FloatingPlayer after the track is gone', () => {
-  it('shows the wave while a song is loaded', () => {
+  it('shows the white line while a song is loaded', () => {
     const tree = render();
-    expect(waves(tree)).toBe(1);
+    expect(lines(tree)).toBe(1);
     act(() => { tree.unmount(); });
   });
 
-  it('removes the wave once it has slid away', () => {
+  it('removes the white line once it has slid away', () => {
     const tree = render();
     setTrack(tree, null);
-    expect(waves(tree)).toBe(0);
+    expect(lines(tree)).toBe(0);
     expect(tree.toJSON()).toBeNull();
     act(() => { tree.unmount(); });
   });
@@ -132,7 +130,7 @@ describe('FloatingPlayer after the track is gone', () => {
     const tree = render();
     setTrack(tree, null);
     setTrack(tree, song);
-    expect(waves(tree)).toBe(1);
+    expect(lines(tree)).toBe(1);
     act(() => { tree.unmount(); });
   });
 });

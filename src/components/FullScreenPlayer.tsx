@@ -73,6 +73,8 @@ const EDGE_BACK_ZONE = 20;
 const IS_IOS = Platform.OS === 'ios';
 
 const FLOAT_D = 60;
+// The open burst's spring (mass 1). See the open effect for how it was chosen.
+const FS_OPEN_SPRING = { stiffness: 1538, damping: 68, mass: 1 };
 /**
  * The Queue/Info panel's resting height, as a share of the window. Taller than the other
  * sheets' half: the floating player, its pill and the Queue/Info buttons cover roughly the
@@ -1350,15 +1352,20 @@ export default function FullScreenPlayer() {
   useEffect(() => {
     if (isFullScreenOpen) {
       // Start at the invisible dot at the floating-player circle, then spring
-      // outward to full screen with a clear, graceful bounce (slower speed than
-      // before so the overshoot reads as a pop bursting from the circle, not a snap).
+      // outward to full screen. Barely any bounce: 12/10 overshot to 114% of the
+      // screen and took ~530 ms to settle, so the pill (OPEN_MORPH_DELAY in
+      // FloatingPlayer) opened while the player was still shrinking back (owner,
+      // 2026-11-10). Then it felt slow, so it runs at TWICE the speed of
+      // bounciness 3 / speed 14 (k 385, c 34): stiffness ×4 and damping ×2 keep the
+      // same damping ratio (0.87), so the same shape in half the time — 90% open at
+      // ~83 ms, looks done at ~120 ms, peaks at ~100.3%.
       posYAnim.setValue(convergeY);
       scaleAnim.setValue(0.02);
       opacityAnim.setValue(0);
       Animated.parallel([
-        Animated.spring(posYAnim,  { toValue: 0, speed: 10, bounciness: 12, useNativeDriver: true }),
-        Animated.spring(scaleAnim, { toValue: 1, speed: 10, bounciness: 12, useNativeDriver: true }),
-        Animated.timing(opacityAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
+        Animated.spring(posYAnim,  { toValue: 0, ...FS_OPEN_SPRING, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, ...FS_OPEN_SPRING, useNativeDriver: true }),
+        Animated.timing(opacityAnim, { toValue: 1, duration: 70, useNativeDriver: true }),
       ]).start();
     } else {
       setActiveTab(null);
@@ -1789,13 +1796,10 @@ export default function FullScreenPlayer() {
             // No `metadata` — GAP owns the lock-screen now-playing info. A second
             // source.metadata here could try to claim the MediaSession.
             source={{ uri: nowPlaying.videoUrl }}
-            // Poster covers the brief gap between source mount and first decoded
-            // frame so the user sees the thumbnail instead of a black flash.
-            poster={
-              nowPlaying.thumbnailUrl
-                ? { source: { uri: nowPlaying.thumbnailUrl }, resizeMode: 'cover' }
-                : undefined
-            }
+            // No `poster`: until the first frame decodes the screen stays black
+            // (styles.video) under the buffering spinner. The thumbnail used to
+            // stand in, and on a slow load it read as a still image that
+            // suddenly started moving (owner, 2026-11-10).
             style={styles.video}
             resizeMode={aspectKnown ? 'contain' : 'cover'}
             // Follow the engine's play/pause: activePostId is the post GAP is
@@ -1834,8 +1838,8 @@ export default function FullScreenPlayer() {
             onError={(e) => {
               // The frame failed to decode, but GAP is still playing the audio
               // fine on its own surface — so DON'T advance the queue here (that
-              // would skip a perfectly audible track). Just drop the spinner and
-              // let the cover art / poster stand in for the missing picture.
+              // would skip a perfectly audible track). Just drop the spinner; the
+              // frame stays black, with the title and controls over it.
               console.warn('[LIVIL][FS] frame onError (audio unaffected)', e?.error ?? e);
               setFsBuffering(false);
               // Release the audio gate — the picture is gone, but the audio plays
@@ -1871,17 +1875,19 @@ export default function FullScreenPlayer() {
                 })}
           />
           </Reanimated.View>
+        ) : nowPlaying.mediaKind === 'video' && !isFullScreenOpen ? (
+          // A VIDEO closing full screen (or closed / backgrounded): nothing, so the
+          // player shrinks away black. It used to swap to the thumbnail for the close
+          // animation, which read as the cover art coming back (owner, 2026-11-10).
+          null
         ) : (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl) ? (
-          // Cover-art mode: audio posts use coverArtUrl; a video that has demoted
-          // to cover (FS minimized / backgrounded) falls back to its thumbnail so
-          // the picture-to-cover transition matches the floating player instead of
-          // flashing the gradient placeholder.
+          // Cover-art mode: audio posts use coverArtUrl. A video only lands here
+          // while full screen is OPEN with no frame (engine driving, no videoUrl),
+          // and shows its thumbnail full-bleed.
           //
           // AUDIO shows the whole artwork on a card cut to its own proportions,
           // centered between the header and the title block, lit by a purple halo
-          // and its cast shadow, drifting while the song plays. A demoted VIDEO
-          // keeps the full-bleed crop — its thumbnail is a frame of the picture,
-          // and shrinking it would make minimize/background visibly jump.
+          // and its cast shadow, drifting while the song plays.
           nowPlaying.mediaKind === 'video' ? (
             <Image
               source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}

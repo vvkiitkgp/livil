@@ -6,10 +6,10 @@
  */
 
 /** How long the circle must stay on the X before the player closes. */
-export const CLOSE_HOLD_MS = 3000;
+export const CLOSE_HOLD_MS = 2000;
 
 /** Once the X and its hint appear they stay at least this long, so a quick pull can still read them. */
-export const CLOSE_HINT_MIN_MS = 1500;
+export const CLOSE_HINT_MIN_MS = 700;
 
 /** Diameter of the X with the circle on it. It is laid out at this size, so its centre never moves. */
 export const CLOSE_TARGET_SIZE = 84;
