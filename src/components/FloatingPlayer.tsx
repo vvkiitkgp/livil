@@ -17,6 +17,7 @@ import Reanimated, {
   runOnJS,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
@@ -38,7 +39,6 @@ import PlayerCloseTarget from './PlayerCloseTarget';
 import { supabase } from '../../lib/supabase';
 import { listPostsForUser, feedPostToNowPlaying } from '../services/posts';
 import { endJamRoom, leaveJamRoom } from '../services/jamRooms';
-import { useTrackWaveform } from '../hooks/useTrackWaveform';
 import { COLORS } from '../theme/colors';
 import { haptics } from '../utils/haptics';
 import {
@@ -51,7 +51,6 @@ import {
 } from '../utils/playerCloseGesture';
 import { FLOATING_PLAYER_HEIGHT } from '../constants/layout';
 import { Icon } from './Icon';
-import WaveVisualizer from './WaveVisualizer';
 import CoverFallback from './CoverFallback';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -96,6 +95,8 @@ const SPRING_POP     = { stiffness: 470, damping: 22.8, mass: 1 };  // play/paus
 // Delay (ms) before the pill morphs open, so the FS player opens first and the
 // pill then pops up. Close stays instant (matches the FS collapse).
 const OPEN_MORPH_DELAY = 220;
+// One full turn of the spinning cover while a song plays (ms).
+const SPIN_MS = 8000;
 
 // ─── "It's draggable" wiggle (onboarding discovery) ─────────────────────────────
 // A gentle shimmy of the floating circle that teaches the user the centre is
@@ -204,17 +205,6 @@ export default function FloatingPlayer() {
   const { isHost } = useJamRealtime();
   // The host's jam pill counts new suggestions while they browse elsewhere.
   const { unreadCount: suggestsUnread } = useJamSuggestions();
-
-  // ─── Beat-synced visualizer envelope ───────────────────────────────────────────
-  // Resolve the ACTIVE track's loudness envelope (cache → DB → analyze-on-device)
-  // and hand it to WaveVisualizer. Fetched by trackId only (not threaded through
-  // every NowPlayingInfo / feed query), since only the playing track needs it.
-  //
-  // The visualiser's envelope. The AUDIO-ONLY gate that keeps this off video — the one
-  // that prevents an OOM kill — now lives in the hook, in one place.
-  const waveform = useTrackWaveform(
-    nowPlaying?.trackId, nowPlaying?.mediaKind, nowPlaying?.audioUrl,
-  );
 
   // ─── Keyboard hide ────────────────────────────────────────────────────────────
   const keyboardAnim = useRef(new Animated.Value(0)).current;
@@ -376,6 +366,21 @@ export default function FloatingPlayer() {
     transform: [{ scaleX: lineVanish.value }],
   }));
 
+  // ─── Cover spin ───────────────────────────────────────────────────────────────
+  // The cover turns like a record while the song plays and stops where it is on pause,
+  // picking up from that angle when playback resumes. Runs only while it can be seen:
+  // not paused, not in full screen (the centre shows no cover there), not under a
+  // sheet / story / repost — a still or hidden player must not run a frame loop.
+  const spinning = isPlaying && shouldShow && !isFullScreenOpen;
+  const spin = useSharedValue(0);
+  const spinStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${spin.value}deg` }] }));
+  useEffect(() => {
+    if (!spinning) { cancelAnimation(spin); return; }
+    const from = spin.value % 360;
+    spin.value = from;
+    spin.value = withRepeat(withTiming(from + 360, { duration: SPIN_MS, easing: REasing.linear }), -1);
+  }, [spinning, spin]);
+
   const springBack = () => {
     circleX.value = withSpring(0, SPRING_BACK);
     circleY.value = withSpring(0, SPRING_BACK);
@@ -483,12 +488,6 @@ export default function FloatingPlayer() {
   const morphAnim  = useRef(new Animated.Value(0)).current;
   const narrowAnim = useRef(new Animated.Value(0)).current;
 
-  // The wave keeps waving while the line turns into the pill and fades out (owner,
-  // 2026-11-10: it used to flatten the moment full screen opened). It is parked only once
-  // the pill has settled: by then it is invisible, and an invisible wave must not keep
-  // its frame loop running (see WaveVisualizer).
-  const [pillSettled, setPillSettled] = useState(false);
-
   useEffect(() => {
     if (morphExpanded) {
       // Springs up with a clear, graceful bounce, OPEN_MORPH_DELAY after full screen
@@ -499,10 +498,8 @@ export default function FloatingPlayer() {
         speed: 10,
         bounciness: 12,
         useNativeDriver: false,
-      }).start(({ finished }) => { if (finished) { setPillSettled(true); } });
+      }).start();
     } else {
-      // The wave ripples again from the first frame of the collapse.
-      setPillSettled(false);
       // Close: quick, clean ease (no delay, no bounce) so it collapses with the FS.
       Animated.timing(morphAnim, {
         toValue: 0,
@@ -612,17 +609,16 @@ export default function FloatingPlayer() {
   const barHeight  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_H,       PILL_H] });
   const barTop     = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [BAR_TOP_REST, BAR_TOP_PILL] });
   const barRadius  = morphAnim.interpolate({ inputRange: [0, 1], outputRange: [1, PILL_H / 2] });
-  // Rest color is TRANSPARENT (not white): the resting "line" is drawn by the
-  // WaveVisualizer instead, so it looks like the white line itself is waving
-  // (and flattens to that same line when paused). The bar still fades into the
-  // dark pill as it morphs open.
+  // Rest color is TRANSPARENT (not white): the resting white line is its own view
+  // (styles.restLine), so a completed close hold can shrink it with the circle. The bar
+  // still fades into the dark pill as it morphs open.
   const barBg      = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(10,10,15,0)', 'rgba(10,10,15,0.9)'] });
   const barBorderC = morphAnim.interpolate({ inputRange: [0, 1], outputRange: ['rgba(139, 61, 255,0)', 'rgba(139, 61, 255,0.50)'] });
   // Content fades in only after pill is mostly open, and out before it collapses
   const contentOpacity = morphAnim.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 0, 1] });
-  // Spike visualizer lives ONLY on the resting white line — fade it out as soon
-  // as the bar starts morphing into the pill (inverse of morphAnim).
-  const visualizerOpacity = morphAnim.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
+  // The white line lives ONLY at rest — fade it out as soon as the bar starts
+  // morphing into the pill (inverse of morphAnim).
+  const restLineOpacity = morphAnim.interpolate({ inputRange: [0, 0.4], outputRange: [1, 0], extrapolate: 'clamp' });
 
   // Pulsing live dot
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -920,18 +916,13 @@ export default function FloatingPlayer() {
           </Animated.View>
         </Animated.View>
 
-        {/* ── Wavy-line visualizer ──
-            The white line ripples as a scrolling sine wave while playing and
-            flattens back to a straight line on pause (Material wavy-progress look).
-            Fades out (inverse of morphAnim) as the line morphs into the pill, so it
-            only lives on the minimized line. Centered + absolute so it never shifts
-            the circle; the album circle sits on top, the wave flows out both sides. */}
-        <Animated.View style={[styles.visualizerOverlay, { opacity: visualizerOpacity }]} pointerEvents="none">
-          {/* Opening full screen, the wave keeps waving as it fades into the pill and is
-              parked once the pill has settled (pillSettled). It ripples again the moment
-              the pill starts collapsing. In a jam the pill is always open, so it stays off. */}
+        {/* ── Resting white line ──
+            A still line (the beat-synced wave was removed 2026-11-10; the cover spins
+            instead). Fades out (inverse of morphAnim) as the line morphs into the pill.
+            Centered + absolute so it never shifts the circle, which sits on top. */}
+        <Animated.View style={[styles.restLineOverlay, { opacity: restLineOpacity }]} pointerEvents="none">
           <Reanimated.View style={lineStyle}>
-            <WaveVisualizer playing={isPlaying} suppressed={!!activeJam || pillSettled || hiddenUnderSheet} width={REST_BAR_W} waveform={waveform} />
+            <View testID="floating-player-line" style={[styles.restLine, { width: REST_BAR_W }]} />
           </Reanimated.View>
         </Animated.View>
 
@@ -956,17 +947,19 @@ export default function FloatingPlayer() {
               {/* Minimised → cover (audio) or thumbnail (video). FS open → transparent
                   centre (the stroked ring lets the FS video show through). */}
               {!isFullScreenOpen && (
-                (nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
-                  <Image
-                    source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
-                    style={styles.albumArt}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={styles.fallbackArt}>
-                    <CoverFallback />
-                  </View>
-                )
+                <Reanimated.View testID="floating-player-cover" style={[StyleSheet.absoluteFill, spinStyle]}>
+                  {(nowPlaying?.coverArtUrl ?? nowPlaying?.thumbnailUrl) ? (
+                    <Image
+                      source={{ uri: (nowPlaying.coverArtUrl ?? nowPlaying.thumbnailUrl)! }}
+                      style={styles.albumArt}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.fallbackArt}>
+                      <CoverFallback />
+                    </View>
+                  )}
+                </Reanimated.View>
               )}
               {/* Persistent play/pause indicator (driven by global play state).
                   Button convention: shows the action a tap would take — ❚❚ while
@@ -1013,7 +1006,7 @@ const styles = StyleSheet.create({
   // Centered, absolute (so it never shifts the circle) overlay for the spike
   // visualizer on the resting line. The album circle renders after this and sits
   // on top, framing the spikes that flank it.
-  visualizerOverlay: {
+  restLineOverlay: {
     position: 'absolute',
     left: 0,
     right: 0,
@@ -1022,6 +1015,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Same thickness and round ends as the flat wave it replaced.
+  restLine: { height: 2.5, borderRadius: 1.25, backgroundColor: COLORS.white },
 
   pillContent: {
     flex: 1,

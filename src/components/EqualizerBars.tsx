@@ -17,8 +17,7 @@ import { COLORS } from '../theme/colors';
  * pulse. Cheaper and steadier than re-rolling a random target every cycle,
  * which needs a JS round-trip per bar per bounce.
  *
- * The beat-synced wave is a separate thing entirely (WaveVisualizer, driven by
- * `tracks.waveform_peaks`) — do not wire this to it. Every use of this (a queue
+ * Do not wire this to `tracks.waveform_peaks` (the scrubber's loudness data). Every use of this (a queue
  * row, an inbox avatar, a friend's now-playing pill) is about SOMEONE ELSE's or an
  * off-screen track and is not worth a decode.
  */
