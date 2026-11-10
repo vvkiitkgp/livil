@@ -427,7 +427,14 @@ export default function StudioScreen() {
     setPhase('editor');
   }, [project.voices.length, update]);
 
-  /** Next: mix the song (once per version of the project) and show it as it will be posted. */
+  /**
+   * Next: mix the song (once per version of the project) and show it as it will be posted.
+   * ONE render at a time: Back during a mix keeps it running, and a second Next used to start
+   * another full-length render beside it — two mixes in memory is the pattern that has killed
+   * the Editor before. A Next for the version already mixing just shows its progress; a Next
+   * for a newer version waits for the running one, whose result is then dropped, not kept.
+   */
+  const mixingRef = useRef<{ of: Project; done: Promise<void> } | null>(null);
   const goFinal = useCallback(async () => {
     engine.stop();
     setPlaying(false);
@@ -438,22 +445,33 @@ export default function StudioScreen() {
     }
     setPhase('final');
     if (mix?.of === project) return;
+    if (mixingRef.current?.of === project) return;
+    const previous = mixingRef.current;
     setMix(null);
     setMixProgress(0);
-    // Let React paint "Your song" with its spinner before the mix starts: the render's set-up is
-    // synchronous, and started in the same tick it left the Editor on screen, frozen and
-    // apparently still tappable, with no sign that Next had done anything.
-    await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
-    try {
-      const t0 = Date.now();
-      const m = await renderMix(project, setMixProgress);
-      console.log(`[LIVIL][POST] ${m.seconds.toFixed(1)} s mixed in ${Date.now() - t0} ms`);
-      setMix({ of: project, mix: m });
-    } catch (e) {
-      console.log('[LIVIL][POST] mix failed', e);
-      showToast("Couldn't mix the song.", { kind: 'error' });
-      setPhase('editor');
-    }
+    const current = () => mixingRef.current?.of === project;
+    const done = (async () => {
+      if (previous) { await previous.done; }
+      // Let React paint "Your song" with its spinner before the mix starts: the render's set-up
+      // is synchronous, and started in the same tick it left the Editor on screen, frozen and
+      // apparently still tappable, with no sign that Next had done anything.
+      await new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)));
+      try {
+        const t0 = Date.now();
+        const m = await renderMix(project, f => { if (current()) setMixProgress(f); });
+        console.log(`[LIVIL][POST] ${m.seconds.toFixed(1)} s mixed in ${Date.now() - t0} ms${current() ? '' : ' (superseded, dropped)'}`);
+        if (current()) setMix({ of: project, mix: m });
+      } catch (e) {
+        console.log('[LIVIL][POST] mix failed', e);
+        if (current()) {
+          showToast("Couldn't mix the song.", { kind: 'error' });
+          setPhase('editor');
+        }
+      } finally {
+        if (current()) mixingRef.current = null;
+      }
+    })();
+    mixingRef.current = { of: project, done };
   }, [engine, project, mix, showToast]);
 
   /**

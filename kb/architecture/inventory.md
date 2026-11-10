@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-608 TypeScript file(s) under `src/`, 120,902 lines.
+608 TypeScript file(s) under `src/`, 120,934 lines.
 
 ## Size hotspots
 
@@ -44,8 +44,8 @@ reading alone (Constitution P28).
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
+| `src/screens/studio/StudioScreen.tsx` | 708 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 686 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/studio/RecordPanel.tsx` | 610 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-77 file(s), 36,105 lines.
+77 file(s), 36,136 lines.
 
 | File | Lines |
 |---|---:|
@@ -126,8 +126,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
 | `src/screens/main/EditProfileScreen.tsx` | 722 |
+| `src/screens/studio/StudioScreen.tsx` | 708 |
 | `src/screens/main/InboxScreen.tsx` | 701 |
-| `src/screens/studio/StudioScreen.tsx` | 686 |
 | `src/screens/main/LibraryScreen.tsx` | 656 |
 | `src/screens/main/SpotifyRepostScreen.tsx` | 626 |
 | `src/screens/studio/RecordPanel.tsx` | 610 |
@@ -174,8 +174,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
+| `src/screens/studio/renderMix.ts` | 166 |
 | `src/screens/main/AddToLivilScreen.tsx` | 161 |
-| `src/screens/studio/renderMix.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/SongTrim.tsx` | 116 |
 | `src/screens/studio/MicPicker.tsx` | 114 |
@@ -598,12 +598,12 @@ case the call fails silently wherever its result is discarded.
 
 ## Utilities
 
-131 file(s), 13,966 lines.
+131 file(s), 13,967 lines.
 
 | File | Lines |
 |---|---:|
 | `src/utils/synth.ts` | 910 |
-| `src/utils/audioFx/master.ts` | 455 |
+| `src/utils/audioFx/master.ts` | 456 |
 | `src/utils/tempo/index.ts` | 453 |
 | `src/utils/__tests__/synth.test.ts` | 405 |
 | `src/utils/__tests__/chatTyping.test.tsx` | 268 |
