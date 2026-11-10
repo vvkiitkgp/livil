@@ -279,17 +279,21 @@ export default function FloatingPlayer() {
   // (2026-11-10). A story or repost still unmounts it, as before (the engine plays that one).
   const hiddenUnderSheet = underSheet && !isStoryViewerOpen && !isRepostOpen;
   const shouldShow = (!!nowPlaying || !!activeJam) && !covered;
+  // Sliding in and out is for a track starting or ending (and stories/reposts) only. Under a
+  // sheet the player does not MOVE: it vanishes in place and reappears in place once the sheet
+  // has gone, like a player a sheet simply covers (owner, 2026-11-10: "let it stay where it was").
+  const present = (!!nowPlaying || !!activeJam) && !isStoryViewerOpen && !isRepostOpen;
   useEffect(() => {
-    if (shouldShow && !wasVisible.current) {
+    if (present && !wasVisible.current) {
       wasVisible.current = true;
       Animated.spring(slideAnim, { toValue: 1, useNativeDriver: true, bounciness: 6 }).start();
-    } else if (!shouldShow && wasVisible.current) {
+    } else if (!present && wasVisible.current) {
       wasVisible.current = false;
       // The hidden offset only moves the player down onto the tab bar, and `wasVisible` is a ref,
       // so it takes a render after the slide to remove it. Without one the wave stays on screen.
       Animated.timing(slideAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => renderAfterSlideOut());
     }
-  }, [shouldShow, slideAnim]);
+  }, [present, slideAnim]);
 
   // ─── Immersive (clean-view) hide ──────────────────────────────────────────────
   // When FullScreenPlayer enters clean view, the floating pill must get out of the
@@ -828,7 +832,7 @@ export default function FloatingPlayer() {
   const rightRot = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '0deg', '0deg'], extrapolate: 'clamp' });
   const leftRot  = progressAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['180deg', '180deg', '0deg'], extrapolate: 'clamp' });
 
-  if ((!shouldShow && !wasVisible.current && !hiddenUnderSheet) || isStoryViewerOpen || isRepostOpen) { return null; }
+  if ((!present && !wasVisible.current) || isStoryViewerOpen || isRepostOpen) { return null; }
 
 
   return (

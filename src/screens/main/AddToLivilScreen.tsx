@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { SpotifyLogo } from '../../components/SpotifyLogo';
 import { Logo } from '../../components/Logo';
 import { useMyDrafts } from '../../hooks/useMyDrafts';
+import { usePlayback } from '../../contexts/PlaybackContext';
 import type { RootStackParamList } from '../../navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -26,6 +27,15 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 export default function AddToLivilScreen() {
   const navigation = useNavigation<Nav>();
   const { drafts } = useMyDrafts();
+
+  // Opening New Post pauses the music (owner, 2026-11-10): every way on from here — Upload, the
+  // Editor, a repost — would pause it anyway, and the player is hidden under this screen.
+  // Once, on open; not again on coming back from Drafts.
+  const { pauseAll, handlersRef } = usePlayback();
+  useEffect(() => {
+    handlersRef.current?.pause();
+    pauseAll();
+  }, [handlersRef, pauseAll]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>

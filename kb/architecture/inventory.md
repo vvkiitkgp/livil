@@ -16,7 +16,7 @@ related_adrs: []
 > Produced by `npm run kb:generate`. Edits are overwritten on the next run.
 > To change this document, change the generator or the source it reads.
 
-611 TypeScript file(s) under `src/`, 121,728 lines.
+611 TypeScript file(s) under `src/`, 121,747 lines.
 
 ## Size hotspots
 
@@ -38,7 +38,7 @@ reading alone (Constitution P28).
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
 | `src/screens/main/JamRoomScreen.tsx` | 1155 |
-| `src/components/FloatingPlayer.tsx` | 1136 |
+| `src/components/FloatingPlayer.tsx` | 1140 |
 | `src/screens/main/SearchScreen.tsx` | 1046 |
 | `src/screens/main/RepostScreen.tsx` | 1045 |
 | `src/screens/auth/BackstagePassOnboarding.tsx` | 805 |
@@ -110,7 +110,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Screens
 
-80 file(s), 36,845 lines.
+80 file(s), 36,855 lines.
 
 | File | Lines |
 |---|---:|
@@ -175,8 +175,8 @@ case the call fails silently wherever its result is discarded.
 | `src/screens/main/__tests__/DeleteAccountScreen.test.tsx` | 185 |
 | `src/screens/auth/ResetPasswordScreen.tsx` | 181 |
 | `src/screens/auth/TermsAcceptScreen.tsx` | 175 |
+| `src/screens/main/AddToLivilScreen.tsx` | 171 |
 | `src/screens/auth/OnboardingScreen.tsx` | 168 |
-| `src/screens/main/AddToLivilScreen.tsx` | 161 |
 | `src/screens/studio/__tests__/renderMix.test.ts` | 157 |
 | `src/screens/studio/BpmStepper.tsx` | 133 |
 | `src/screens/studio/__tests__/liveLoudness.test.ts` | 129 |
@@ -197,7 +197,7 @@ case the call fails silently wherever its result is discarded.
 
 ## Components
 
-191 file(s), 37,122 lines.
+191 file(s), 37,126 lines.
 
 | File | Lines |
 |---|---:|
@@ -205,7 +205,7 @@ case the call fails silently wherever its result is discarded.
 | `src/components/PostCard.tsx` | 1506 |
 | `src/components/CommentsSheet.tsx` | 1180 |
 | `src/components/WaveformScrubber.tsx` | 1158 |
-| `src/components/FloatingPlayer.tsx` | 1136 |
+| `src/components/FloatingPlayer.tsx` | 1140 |
 | `src/components/GlobalAudioPlayer.tsx` | 741 |
 | `src/components/SheetModal.tsx` | 570 |
 | `src/components/guide/PickThree.tsx` | 518 |
