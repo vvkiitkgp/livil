@@ -7,7 +7,8 @@
 -- exactly the shared ranker with the filter off; (4) a flood of newer reposts cannot push an
 -- upload out of the tab's candidate pool (the filter sits inside the LIMITed branches);
 -- (5) only signed-in callers may run the feeds; (6) the new_music switch defaults on and
--- only its owner can change it.
+-- only its owner can change it; (7) both tabs carry the track's "Made with Livil" label
+-- (20261121000000 — the ranker builds the track object by hand and once left it out).
 --
 --     psql -v ON_ERROR_STOP=1 -f supabase/tests/rls/new-on-livil.test.sql
 
@@ -101,6 +102,9 @@ insert into posts (id, author_id, kind, track_id, original_post_id, created_at) 
    'b2000000-0000-0000-0000-000000000004', null, now() - interval '2 hours')
 on conflict do nothing;
 
+-- ARJUN made his song in the Editor; DEV's is an ordinary upload (column default false).
+update tracks set made_with_livil = true where id = 'b2000000-0000-0000-0000-000000000001';
+
 -- 110 reposts by RIYA (a stranger to the viewer, reposts public by default), all newer than
 -- DEV's upload.
 insert into posts (author_id, kind, track_id, original_post_id, created_at)
@@ -128,6 +132,12 @@ select pg_temp.assert_count('4a  110 newer reposts do not push a stranger''s upl
   (select count(*) from nol where post_id = 'b3000000-0000-0000-0000-000000000002'), 1);
 select pg_temp.assert('1c  rows carry the same post shape For you does',
   (select bool_and(post ? 'track' and post ? 'author' and post ? 'viewer_has_liked') from nol), true);
+select pg_temp.assert('7a  New on Livil carries "Made with Livil" for an Editor song',
+  (select (post->'track'->>'made_with_livil')::boolean from nol
+   where post_id = 'b3000000-0000-0000-0000-000000000001'), true);
+select pg_temp.assert('7b  …and false, not missing, for an ordinary upload',
+  (select (post->'track'->>'made_with_livil')::boolean from nol
+   where post_id = 'b3000000-0000-0000-0000-000000000002'), false);
 
 -- ── 3. For you, as VIEWER ───────────────────────────────────────────────────
 create temp table fy on commit drop as
@@ -135,6 +145,9 @@ create temp table fy on commit drop as
 
 select pg_temp.assert('3a  For you still has reposts in it',
   (select count(*) > 0 from fy where post->>'kind' = 'repost'), true);
+select pg_temp.assert('7c  For you carries "Made with Livil" too — on the upload AND its reposts',
+  (select bool_and((post->'track'->>'made_with_livil')::boolean) from fy
+   where post->'track'->>'id' = 'b2000000-0000-0000-0000-000000000001'), true);
 -- (By construction — fetch_home_feed's body IS this call. That For you is unchanged from
 -- 20261009000000 is shown by the feed-* suites, which run against the wrapper, and by the
 -- seeded before/after replay recorded in ADR-0030.)
