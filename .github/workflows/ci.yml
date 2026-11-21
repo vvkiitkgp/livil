@@ -397,6 +397,17 @@ jobs:
           psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
             -f supabase/tests/rls/account-deletion-liv74.test.sql
 
+      # 20261121010000 — account deletion failed on production for anyone who had liked a
+      # comment on their own post: a trigger ran mid-cascade against a post already gone.
+      # Whether it happens depends on constraint OIDs, which differ between production and
+      # this replay, so the test runs the deletion under both cascade orders.
+      - name: account deletion cascade-order tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 \
+            -f supabase/tests/rls/account-deletion-cascade-order.test.sql
+
       # First-run guide — profiles.guide_seen_at. The owner stamps their own row when
       # the tour is finished or skipped; nobody else can clear it (which would force
       # the tour back onto them) or rewrite it.
